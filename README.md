@@ -100,6 +100,8 @@ erDiagram
   RACE ||--o| JUDGE : "data/judge(動き・バック側の並び)"
   OFFICIAL_RESULT ||--o{ OUTCOME : "進入・ST・除外"
   JUDGE ||--o{ OUTCOME : "動き(ソフトラベル)"
+  LABEL_TABLE ||--o{ OUTCOME : "labels/<表の版>.json(ラベル→本当の動きの確率)"
+  MODEL_VERSION ||--o{ OUTCOME : "基準の版(baseline-v1)を同じ入力で再実行して比較"
 ```
 
 ## 8. 使い方
@@ -108,6 +110,7 @@ erDiagram
 python predrec.py make --root . --race 24_20261010_05 --deadline 2026-10-10T12:41:00+09:00 --version <版> --input <入力.json>
 python predrec.py verify --root .
 python predrec.py commit --root .      # git のコミットだけ。push は別(ユーザーの了承後)
+python evaluate.py report --root . --version <版> --base-version baseline-v1 --results <results.jsonl> --judge <judge.json> --out report.json   # レース後の評価(S3)
 python -m unittest discover -s tests   # 確認用テスト
 ```
 
@@ -121,8 +124,12 @@ python -m unittest discover -s tests   # 確認用テスト
 - 実データ1レース(`examples/`)で記録を作り、verify が通ること。
 
 **未決・要判断**
-1. **push 先のリポジトリ**: 2026-10-07 ユーザー決定で「予測記録専用の公開リポジトリ」。作成・push はまだ(ユーザーの了承後)。手順: GitHub で空の公開リポジトリを作る → このフォルダで `git init -b main`・最初のコミット・`git remote add origin <URL>`・`git push -u origin main`(Windows の git で行う。Claude の作業環境はこのフォルダのファイルを消せないため git の一時ファイルが残り、git を使えない)→ GitHub の設定でブランチ保護(force-push と削除を禁止)を有効にする。`.gitignore` は用意済み。
+1. **push 先のリポジトリ**: 2026-10-07 ユーザー決定で「予測記録専用の公開リポジトリ」https://github.com/harukishimizu2020-sketch/boat-predictions 。同日に初回 push 済み、main は削除と force-push を禁止済み(ルール protect-main)。git は Windows の git で行う(Claude の作業環境はこのフォルダのファイルを消せないため git の一時ファイルが残り、git を使えない)。手順は `PUSH_STEPS.md`(共有フォルダ側)。
 2. **本番の毎日の実行**: 締切前に「入力取得 → 予測 → 記録 → push」を毎レース行う仕組みは、毎日の自動運用を作らない現方針(PROJECT_BOARD 1.2)により未作成。締切時刻と直前情報の取得は Windows 側(既存の `kyotei_mark1/pipeline/*.mjs` と同じ方法)で行う必要がある(このPCの作業環境・クラウドからは公式サイトに接続できなかった)。
 3. **攻めの成功(E4)と逃げ切りの定義**: 版の設定に書く欄だけ用意した(未定)。バック側の並びの精度確認の後に決める。
 4. **E0 と E1 の関係**: 設計書では進入変更レースを E0(対象外)に入れているため、枠なりを予想する限り E1 は起きない。E1 を数えたい場合は設計書5.1の見直しが要る。
 5. **オッズの時刻**: `aux.jsonl` のオッズは取得時刻が分からず、確定オッズなら過去レースでの試しに使うと先読みになる。本番では予測時点のオッズを入力として保存する。
+
+## 10. 評価器と基準モデル(S3、2026-10-07)
+
+評価器 `evaluate.py`、正解ラベルの表 `labels/soft-v1.json`、基準モデル `baseline-v1`(`models/baseline_v1.py`・`versions/baseline-v1.json`)、作成用の道具 `tools/`(基準の作成 `build_baseline.py`、試しの記録 `backtest.py`、想定外の数え方の模擬計算 `sim_unexpected.py`)を追加した。過去レース(大村 2026-09-01〜10-01、数える 176 件)で試した結果、確認したこと、評価の数え方2点(2026-10-07 ユーザー決定: 段階2→3の条件2「想定外」はソフト正解の期待件数で数える、確信度「低」のラベルも主集計に含める)は `S3_REPORT.md` にまとめた。

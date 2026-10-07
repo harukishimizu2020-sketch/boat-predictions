@@ -1,61 +1,295 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "レース後の照合結果(案。S3 の評価器で確定する)",
+  "title": "レース後の照合結果(S3 の評価器 evaluate.py が作る)",
   "description": "予測記録1件に対して1件。予測記録は書き換えず、結果はこの別ファイルに書く。records/ と同じ並びで outcomes/ に置く想定",
   "type": "object",
   "additionalProperties": false,
-  "required": ["format", "race_id", "version", "record_hash", "evaluated_at", "official", "judge", "race", "boats"],
+  "required": [
+    "format",
+    "race_id",
+    "version",
+    "record_hash",
+    "evaluated_at",
+    "official",
+    "judge",
+    "race",
+    "boats",
+    "extra"
+  ],
   "properties": {
-    "format": {"const": "outcome-1"},
-    "race_id": {"type": "string", "pattern": "^24_\\d{8}_\\d{2}$"},
-    "version": {"type": "string"},
-    "record_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "照合した予測記録"},
-    "evaluated_at": {"type": "string"},
+    "format": {
+      "const": "outcome-1"
+    },
+    "race_id": {
+      "type": "string",
+      "pattern": "^24_\\d{8}_\\d{2}$"
+    },
+    "version": {
+      "type": "string"
+    },
+    "record_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "照合した予測記録"
+    },
+    "evaluated_at": {
+      "type": "string"
+    },
     "official": {
-      "type": "object", "description": "公式結果(results_all.jsonl と同じ項目)",
-      "required": ["course", "st", "order", "kimarite", "flags", "excluded"],
+      "type": "object",
+      "description": "公式結果(results_all.jsonl と同じ項目)",
+      "required": [
+        "course",
+        "st",
+        "order",
+        "kimarite",
+        "flags",
+        "excluded"
+      ],
       "properties": {
-        "course": {"type": "array", "items": {"type": "integer"}},
-        "st": {"type": "object", "description": "艇番→ST(秒、フライングは負)"},
-        "order": {"type": "array"}, "kimarite": {"type": ["string", "null"]},
-        "flags": {"type": "array", "items": {"type": "string"}}, "excluded": {"type": "boolean"}
+        "course": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "st": {
+          "type": "object",
+          "description": "艇番→ST(秒、フライングは負)"
+        },
+        "order": {
+          "type": "array"
+        },
+        "kimarite": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "excluded": {
+          "type": "boolean"
+        }
       }
     },
     "judge": {
-      "type": "object", "required": ["source", "moves", "back", "soft_label_table"],
+      "type": "object",
+      "required": [
+        "source",
+        "moves",
+        "back",
+        "soft_label_table"
+      ],
       "properties": {
-        "source": {"type": "string", "description": "判定ファイル"},
-        "moves": {"type": "object", "description": "艇番→[動きタイプ, 確信度]"},
-        "back": {"type": ["array", "null"], "description": "1マーク直後の並び [[先頭→最後尾], 確信度]"},
-        "soft_label_table": {"type": "string"}
+        "source": {
+          "type": "string",
+          "description": "判定ファイル"
+        },
+        "moves": {
+          "type": "object",
+          "description": "艇番→[動きタイプ, 確信度]"
+        },
+        "back": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "1マーク直後の並び [[先頭→最後尾], 確信度]"
+        },
+        "soft_label_table": {
+          "type": "string"
+        }
       }
     },
     "race": {
-      "type": "object", "additionalProperties": false,
-      "required": ["scored", "excluded_reason", "origin_hard", "origin_soft", "brier_soft", "brier_hard", "brier_base_soft", "brier_base_hard", "tail", "tail_u", "unexpected"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scored",
+        "excluded_reason",
+        "origin_hard",
+        "origin_soft",
+        "brier_soft",
+        "brier_hard",
+        "brier_base_soft",
+        "brier_base_hard",
+        "tail",
+        "tail_u",
+        "unexpected"
+      ],
       "properties": {
-        "scored": {"type": "boolean", "description": "段階2→3の判定に数えるか(live・版の eval_from 以降・枠なり・除外なし)"},
-        "excluded_reason": {"type": ["string", "null"]},
-        "origin_hard": {"type": ["string", "null"]},
-        "origin_soft": {"type": ["array", "null"], "items": {"type": "number"}},
-        "brier_soft": {"type": ["number", "null"]}, "brier_hard": {"type": ["number", "null"]},
-        "brier_base_soft": {"type": ["number", "null"]}, "brier_base_hard": {"type": ["number", "null"]},
-        "tail": {"type": ["number", "null"]}, "tail_u": {"type": ["number", "null"]},
-        "unexpected": {"type": ["boolean", "null"], "description": "tail < 0.05"}
+        "scored": {
+          "type": "boolean",
+          "description": "段階2→3の判定に数える対象か(本番・版の eval_from 以降・枠なり・除外なし・結果と判定がそろった)"
+        },
+        "excluded_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin_hard": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin_soft": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          }
+        },
+        "brier_soft": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "brier_hard": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "brier_base_soft": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "brier_base_hard": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tail": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tail_u": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unexpected": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "tail < 0.05"
+        }
       }
     },
     "boats": {
       "type": "array",
       "items": {
-        "type": "object", "required": ["boat", "class"],
+        "type": "object",
+        "required": [
+          "boat",
+          "class",
+          "class_incl_low"
+        ],
         "properties": {
-          "boat": {"type": "integer", "minimum": 1, "maximum": 6},
-          "class": {"enum": ["E0", "E1", "E2", "E3", "E4", "当たり", "判定なし"], "description": "設計書5.1。上から順に当てはめる。予測が無い項目は判定なし"},
-          "st_z": {"type": ["number", "null"]},
-          "move_tail": {"type": ["number", "null"]},
-          "unexpected": {"type": ["boolean", "null"]}
+          "boat": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6
+          },
+          "class": {
+            "enum": [
+              "E0",
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "当たり",
+              "判定なし"
+            ],
+            "description": "設計書5.1。上から順に当てはめる。予測が無い項目は判定なし"
+          },
+          "st_z": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "move_tail": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unexpected": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "unexpected_soft": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "ソフト正解での動きの想定外の期待値(本当の動きが m である確率 × m なら想定外か、の合計)"
+          },
+          "class_incl_low": {
+            "enum": [
+              "E0",
+              "E1",
+              "E2",
+              "E3",
+              "E4",
+              "当たり",
+              "判定なし"
+            ],
+            "description": "確信度「低」のラベルも含めた場合の分類(設計書第4章)"
+          },
+          "match_soft": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "予測した動きが本当に起きた確率(ソフトラベル、設計書5.5)"
+          },
+          "label": {
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "success_checked": {
+            "type": "boolean",
+            "description": "攻めの成否(E4)を判定できたか(バック側の並びと success_p がそろったとき)"
+          }
         }
       }
+    },
+    "extra": {
+      "type": "object",
+      "description": "集計用の補助の値(未確定か・判断不可と確信度「低」のラベル数・ソフトでの想定外の期待値・α=10%・主シナリオの的中)",
+      "required": [
+        "pending",
+        "n_unknown_labels",
+        "n_low_labels",
+        "soft_unexpected",
+        "soft_unexpected_10",
+        "unexpected_10",
+        "hit_soft",
+        "hit_hard"
+      ]
     }
   }
 }
