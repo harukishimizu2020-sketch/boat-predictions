@@ -1,0 +1,37 @@
+{
+ "version": "trial-v0",
+ "purpose": "S1(予測記録の形式)の動作確認用。段階2→3の判定には使わない",
+ "model": "起点の単純な発生率(全レース同じ確率)",
+ "frozen_at": "2026-10-07T13:00:00+09:00",
+ "built_from": {
+  "data": "kyotei_mark1/data/analysis/analysis5_origin.md 起点の割合(ソフト)",
+  "period": "2026-07-02〜2026-10-01(大村485レース、全期間)",
+  "note": "評価期間を含むので基準モデルには使わない"
+ },
+ "eval_from": null,
+ "origin_classes": [
+  "2まくり",
+  "3まくり",
+  "4まくり",
+  "5まくり",
+  "6まくり",
+  "3まくり差し",
+  "その他"
+ ],
+ "bands": {
+  "lo": 0.0,
+  "hi": 1.01
+ },
+ "bands_method": "全レース同じ確率のため帯を分けない(全レース○)。本番の版は構築期間の主シナリオ確率の3分位(GATE 第5章)",
+ "success_definition": null,
+ "escape_definition": null,
+ "soft_label_table": "kyotei_mark1/pipeline/a5_common.py SOFT(2026-10-07修正後)",
+ "entry": "models/trial_v0.py",
+ "code_files": [
+  "models/trial_v0.py"
+ ],
+ "code_files_hash": "sha256:15eda49cf7d1a9afb030850d94117ee709f9e82403abf5cd087c25251501ef08",
+ "notes": [
+  "動きの予測(boats)・1号艇(boat1)・ST・足の評価は出さない(null)"
+ ]
+}

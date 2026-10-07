@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "予測理論の版の設定(版を作った時点で固定。変えるときは新しい版を作る)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "purpose", "model", "frozen_at", "built_from", "eval_from", "origin_classes", "bands", "bands_method", "success_definition", "escape_definition", "soft_label_table", "entry", "code_files", "code_files_hash", "notes"],
+  "properties": {
+    "version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "purpose": {"type": "string", "description": "例: 段階2の本番 / S1の動作確認(判定に使わない)"},
+    "model": {"type": "string", "description": "予測の方法の説明"},
+    "frozen_at": {"type": "string"},
+    "built_from": {"type": "object", "description": "モデルを作ったデータと期間(構築期間)"},
+    "eval_from": {"type": ["string", "null"], "description": "この日以降の締切前記録だけを判定に数える(版を変えたら0から数え直す。設計書5.3)"},
+    "origin_classes": {"type": "array", "items": {"type": "string"}, "minItems": 7, "maxItems": 7},
+    "bands": {"type": "object", "additionalProperties": false, "required": ["lo", "hi"], "properties": {"lo": {"type": "number"}, "hi": {"type": "number"}}},
+    "bands_method": {"type": "string", "description": "帯の決め方(GATE 第5章: 構築期間の主シナリオ確率の3分位)"},
+    "success_definition": {"type": ["string", "null"]},
+    "escape_definition": {"type": ["string", "null"]},
+    "soft_label_table": {"type": "string", "description": "評価で使う判定AIの誤りの内訳表の版"},
+    "entry": {"type": "string", "description": "predict(snapshot) を持つモデルのファイル(このフォルダからの相対パス)"},
+    "code_files": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "code_files_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "notes": {"type": "array", "items": {"type": "string"}}
+  }
+}

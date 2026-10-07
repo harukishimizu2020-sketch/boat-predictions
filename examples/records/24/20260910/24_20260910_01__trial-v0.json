@@ -1,0 +1,79 @@
+{
+ "format": "predrec-1",
+ "mode": "backtest",
+ "race": {
+  "race_id": "24_20260910_01",
+  "jcd": "24",
+  "hd": "20260910",
+  "rno": 1,
+  "deadline": null,
+  "deadline_source": "不明(過去レースでの試し)"
+ },
+ "created_at": "2026-10-07T04:59:38+00:00",
+ "model": {
+  "version": "trial-v0",
+  "manifest_hash": "sha256:93a3f912eef461d9447be2b7c3aead6b2a413f67cf9337d259c7c4bd5ba5fcd1",
+  "code_files_hash": "sha256:15eda49cf7d1a9afb030850d94117ee709f9e82403abf5cd087c25251501ef08",
+  "code_commit": null,
+  "output_source": "entry",
+  "tool_hash": "sha256:7f4de4e2921adf390a04d439bc5701cff56f949562d1b2aee5db6d98f7fd554d"
+ },
+ "input": {
+  "hash": "sha256:1ea8317b602accd090a443aef68be8b07e4c174d2c7bd42e51e8e0ad97252b96",
+  "path": "inputs/24/20260910/24_20260910_01__trial-v0.input.json",
+  "captured_at": null
+ },
+ "premise": {
+  "entry": {
+   "courses": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "p_as_predicted": null
+  },
+  "st": null,
+  "form": null
+ },
+ "origin": {
+  "classes": [
+   "2まくり",
+   "3まくり",
+   "4まくり",
+   "5まくり",
+   "6まくり",
+   "3まくり差し",
+   "その他"
+  ],
+  "p": [
+   0.097,
+   0.318,
+   0.088,
+   0.088,
+   0.024,
+   0.27,
+   0.115
+  ]
+ },
+ "main_scenario": {
+  "origin": "3まくり",
+  "p": 0.318,
+  "scenario_id": null
+ },
+ "confidence": {
+  "mark": "○",
+  "bands": {
+   "lo": 0.0,
+   "hi": 1.01
+  }
+ },
+ "boats": null,
+ "boat1": null,
+ "rationale": [],
+ "integrity": {
+  "record_hash": "sha256:9815f8ffa7f0cdc5fc85206885d172ca5057bb815db4ab7c3849750cd6d1de13"
+ }
+}

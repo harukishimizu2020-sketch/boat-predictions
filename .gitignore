@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+ledger.lock
+*.tmp
+_to_delete/

@@ -1,0 +1,156 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "展開予測の記録(1レース・1版につき1件、締切前に作成、上書き不可)",
+  "description": "設計: README.md。数値の整合(確率の合計・主シナリオ・自信度・ハッシュ)は predrec.py の check_record で確かめる。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "mode", "race", "created_at", "model", "input", "premise", "origin", "main_scenario", "confidence", "boats", "boat1", "rationale", "integrity"],
+  "definitions": {
+    "prob": {"type": "number", "minimum": 0, "maximum": 1},
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "time": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3}|\\.\\d{6})?(Z|[+-]\\d{2}:\\d{2})$"},
+    "boat": {"type": "integer", "minimum": 1, "maximum": 6},
+    "moves": {
+      "type": "object", "additionalProperties": false, "required": ["差し", "まくり", "まくり差し"],
+      "properties": {"差し": {"$ref": "#/definitions/prob"}, "まくり": {"$ref": "#/definitions/prob"}, "まくり差し": {"$ref": "#/definitions/prob"}}
+    }
+  },
+  "properties": {
+    "format": {"const": "predrec-1"},
+    "mode": {"enum": ["live", "backtest"], "description": "live=締切前の本番記録(段階3の判定に使う)。backtest=過去レースでの試し(判定に使わない。GATE 第8章4)"},
+    "race": {
+      "type": "object", "additionalProperties": false, "required": ["race_id", "jcd", "hd", "rno", "deadline", "deadline_source"],
+      "properties": {
+        "race_id": {"type": "string", "pattern": "^24_\\d{8}_\\d{2}$", "description": "大村だけ(頭2桁が24)"},
+        "jcd": {"const": "24"},
+        "hd": {"type": "string", "pattern": "^\\d{8}$"},
+        "rno": {"type": "integer", "minimum": 1, "maximum": 12},
+        "deadline": {"oneOf": [{"$ref": "#/definitions/time"}, {"type": "null"}], "description": "締切予定時刻(日本時間 +09:00)。live では必須"},
+        "deadline_source": {"type": ["string", "null"], "description": "締切時刻をどこから取ったか(公式サイトのURLなど)"}
+      }
+    },
+    "created_at": {"$ref": "#/definitions/time", "description": "記録を作った時刻(PCの時計。証明にはGitHubに届いた時刻を使う。README 4章)"},
+    "model": {
+      "type": "object", "additionalProperties": false, "required": ["version", "manifest_hash", "code_files_hash", "code_commit", "output_source", "tool_hash"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+        "manifest_hash": {"$ref": "#/definitions/hash", "description": "versions/<版>.json の正規形ハッシュ(帯・定義が途中で変わっていないことの証明)"},
+        "code_files_hash": {"$ref": "#/definitions/hash", "description": "モデルのコードの中身のハッシュ(版の固定時と同じであること)"},
+        "code_commit": {"type": ["string", "null"], "description": "モデルのコードの git コミット(自動で入る。本番では必須=コードに未コミットの変更が無いこと)"},
+        "output_source": {"enum": ["entry", "file"], "description": "entry=版のモデルを実行した出力 / file=手で用意した出力(backtest のみ可)"},
+        "tool_hash": {"$ref": "#/definitions/hash", "description": "記録を作った predrec.py の中身のハッシュ(参考)"}
+      }
+    },
+    "input": {
+      "type": "object", "additionalProperties": false, "required": ["hash", "path", "captured_at"],
+      "properties": {
+        "hash": {"$ref": "#/definitions/hash", "description": "入力一式(出走表・直前情報・オッズなど)の正規形ハッシュ"},
+        "path": {"type": "string"},
+        "captured_at": {"oneOf": [{"$ref": "#/definitions/time"}, {"type": "null"}], "description": "入力を取得した時刻"}
+      }
+    },
+    "premise": {
+      "type": "object", "additionalProperties": false, "required": ["entry", "st", "form"],
+      "description": "予測の前提。外れ分類 E1(進入)・E2(ST)・E5参考(足)に使う",
+      "properties": {
+        "entry": {
+          "type": "object", "additionalProperties": false, "required": ["courses", "p_as_predicted"],
+          "properties": {
+            "courses": {"type": "array", "items": {"$ref": "#/definitions/boat"}, "minItems": 6, "maxItems": 6, "description": "コース1〜6に入ると予想した艇番(results.jsonl の course と同じ形)"},
+            "p_as_predicted": {"oneOf": [{"$ref": "#/definitions/prob"}, {"type": "null"}], "description": "その進入になる確率(出さないモデルは null)"}
+          }
+        },
+        "st": {
+          "oneOf": [{"type": "null"}, {
+            "type": "array", "minItems": 6, "maxItems": 6,
+            "items": {"type": "object", "additionalProperties": false, "required": ["boat", "mean", "sd"],
+                      "properties": {"boat": {"$ref": "#/definitions/boat"}, "mean": {"type": "number"}, "sd": {"type": "number", "exclusiveMinimum": 0}}}
+          }],
+          "description": "各艇のSTの予測分布(正規分布の平均とばらつき、秒)。|実ST−mean|/sd > 1.96 で E2。出さないモデルは null(E2は判定しない)"
+        },
+        "form": {
+          "oneOf": [{"type": "null"}, {
+            "type": "array", "minItems": 6, "maxItems": 6,
+            "items": {"type": "object", "additionalProperties": false, "required": ["boat", "grade"],
+                      "properties": {"boat": {"$ref": "#/definitions/boat"}, "grade": {"enum": ["上", "中", "下"]}, "basis": {"type": "string"}}}
+          }],
+          "description": "展示から読んだ足の評価(参考。正式な外れ分類には入れない。設計書5.1)"
+        }
+      }
+    },
+    "origin": {
+      "type": "object", "additionalProperties": false, "required": ["classes", "p"],
+      "description": "起点7分類の確率。段階2→3の判定(Brier・想定外・自信度)はこれで行う",
+      "properties": {
+        "classes": {"type": "array", "items": {"type": "string"}, "minItems": 7, "maxItems": 7},
+        "p": {"type": "array", "items": {"$ref": "#/definitions/prob"}, "minItems": 7, "maxItems": 7}
+      }
+    },
+    "main_scenario": {
+      "type": "object", "additionalProperties": false, "required": ["origin", "p", "scenario_id"],
+      "properties": {
+        "origin": {"type": "string", "description": "起点の確率が最大のもの(同率は分類の並び順で先)"},
+        "p": {"$ref": "#/definitions/prob"},
+        "scenario_id": {"type": ["string", "null"], "description": "アニメに使う典型パターン(kyotei_mark1/data/analysis/scenarios.json)のID。任意"}
+      }
+    },
+    "confidence": {
+      "type": "object", "additionalProperties": false, "required": ["mark", "bands"],
+      "properties": {
+        "mark": {"enum": ["◎", "○", "△"]},
+        "bands": {"type": "object", "additionalProperties": false, "required": ["lo", "hi"],
+                  "properties": {"lo": {"$ref": "#/definitions/prob"}, "hi": {"type": "number"}},
+                  "description": "主シナリオ確率 p が hi 以上で◎、lo 未満で△、その間は○。版の設定と同じ値"}
+      }
+    },
+    "boats": {
+      "oneOf": [{"type": "null"}, {
+        "type": "array", "minItems": 5, "maxItems": 5,
+        "items": {
+          "type": "object", "additionalProperties": false, "required": ["boat", "move_p", "success_p"],
+          "properties": {
+            "boat": {"type": "integer", "minimum": 2, "maximum": 6},
+            "move_p": {"$ref": "#/definitions/moves", "description": "試みる動きの確率(合計1)"},
+            "success_p": {"oneOf": [{"type": "null"}, {
+              "type": "object", "additionalProperties": false, "required": ["差し", "まくり", "まくり差し"],
+              "properties": {"差し": {"oneOf": [{"$ref": "#/definitions/prob"}, {"type": "null"}]},
+                             "まくり": {"oneOf": [{"$ref": "#/definitions/prob"}, {"type": "null"}]},
+                             "まくり差し": {"oneOf": [{"$ref": "#/definitions/prob"}, {"type": "null"}]}}}],
+              "description": "その動きを試みたときに成功する確率(条件付き)。成功の定義は版の設定 success_definition。E4用"}
+          }
+        }
+      }],
+      "description": "2〜6号艇ごとの予測。出さないモデルは null(E3/E4は判定しない)"
+    },
+    "boat1": {
+      "oneOf": [{"type": "null"}, {
+        "type": "object", "additionalProperties": false, "required": ["attacked_p", "escape_p"],
+        "properties": {
+          "attacked_p": {"type": "object", "additionalProperties": false, "required": ["なし", "差し", "まくり", "まくり差し"],
+                         "properties": {"なし": {"$ref": "#/definitions/prob"}, "差し": {"$ref": "#/definitions/prob"}, "まくり": {"$ref": "#/definitions/prob"}, "まくり差し": {"$ref": "#/definitions/prob"}}},
+          "escape_p": {"oneOf": [{"$ref": "#/definitions/prob"}, {"type": "null"}], "description": "逃げ切りの確率。定義は版の設定 escape_definition"}
+        }
+      }],
+      "description": "1号艇は「どう攻められたか」で別扱い(既定方針)"
+    },
+    "rationale": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["feature", "direction", "target"],
+        "properties": {
+          "boat": {"oneOf": [{"$ref": "#/definitions/boat"}, {"type": "null"}]},
+          "feature": {"type": "string", "description": "例: 展示タイム"},
+          "value": {"type": ["string", "number", "null"], "description": "例: 6.92(最下位)"},
+          "target": {"type": "string", "description": "影響した予測。例: 3まくり / 3号艇:まくり"},
+          "direction": {"enum": ["up", "down"]},
+          "effect": {"type": ["number", "null"], "description": "確率への寄与(分かれば、ポイント)"}
+        }
+      },
+      "description": "根拠の文章を作るための材料"
+    },
+    "integrity": {
+      "type": "object", "additionalProperties": false, "required": ["record_hash"],
+      "properties": {"record_hash": {"$ref": "#/definitions/hash", "description": "この項目を除いた記録の正規形ハッシュ"}}
+    }
+  }
+}

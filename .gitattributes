@@ -1,0 +1,2 @@
+# 改行を LF に固定する(Windows の autocrlf で台帳に CRLF と LF が混ざらないように)
+* text=auto eol=lf
