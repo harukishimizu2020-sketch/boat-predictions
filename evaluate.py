@@ -52,20 +52,22 @@ def soft_move(boat, t, c, lab, official=None):
     """2〜6号艇の判定ラベル(動きタイプ t, 確信度 c)を [差し, まくり, まくり差し] の確率に直す。判断不可・欠損は None。
     kyotei_mark1/pipeline/a5_common.py の soft(t, c, b, r)(2026-10-07 修正後)と同じ計算:
       1) 判定AIには着順と決まり手を渡しているので、1着艇(1号艇以外)で決まり手と同じラベルは確定(rules.winner_kimarite_certain)
-      2) 確信度「高」は 自分 high_self・他 (1-high_self)/2
-      3) 2号艇は table2 にあればそれを使う。無ければ table を使い、まくり差しの分を差しに移す(rules.boat2_makurizashi_to_sashi)"""
+      2) 2号艇は table2 にあればそれを使う
+      3) 確信度「高」は、表に「高」の行があればそれを、無ければ 自分 high_self・他 (1-high_self)/2(soft-v1 は表に「高」の行が無い)
+      4) それ以外は table を使い、2号艇はまくり差しの分を差しに移す(rules.boat2_makurizashi_to_sashi)"""
     if t not in MOVES: return None
     rules = lab.get('rules', {})
     if rules.get('winner_kimarite_certain') and official is not None and boat != 1:
         order = official.get('order') or []
         if order and int(order[0]) == boat and official.get('kimarite') == t:
             return [1.0 if m == t else 0.0 for m in MOVES]
-    if c == '高':
+    key = '%s|%s' % (t, c)
+    if boat == 2 and key in lab.get('table2', {}):
+        d = lab['table2'][key]; return [d.get(m, 0.0) for m in MOVES]
+    if c == '高' and key not in lab['table']:
         hs = lab['high_self']; v = [hs if m == t else round((1 - hs) / 2, 12) for m in MOVES]
-    elif boat == 2 and '%s|%s' % (t, c) in lab.get('table2', {}):
-        d = lab['table2']['%s|%s' % (t, c)]; return [d.get(m, 0.0) for m in MOVES]
     else:
-        d = lab['table'].get('%s|%s' % (t, c), {t: 1.0}); v = [d.get(m, 0.0) for m in MOVES]
+        d = lab['table'].get(key, {t: 1.0}); v = [d.get(m, 0.0) for m in MOVES]
     if rules.get('boat2_makurizashi_to_sashi') and boat == 2:
         v = [v[0] + v[2], v[1], 0.0]  # 2号艇の内側は1号艇だけなので、まくり差しは起きない
     return v

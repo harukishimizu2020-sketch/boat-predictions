@@ -1,0 +1,38 @@
+{
+ "version": "baseline-v2",
+ "purpose": "S4 の本モデルと比べる基準モデル(soft-v2 の表で作り直したもの)。この版自体は段階2→3の判定に使わない",
+ "model": "大村の構築期間の起点の単純な発生率(全レース同じ確率)。動き・STもコースごとの単純な割合・平均",
+ "frozen_at": "2026-10-08T05:13:31+00:00",
+ "built_from": {
+  "data": "kyotei_mark1/data/results_all.jsonl・data/judge/[ab]_*.json(後のファイル優先)",
+  "period": "20260702〜20260831(起点・動き 309 レース)、ST は 20251215〜20260831",
+  "labels": "labels/soft-v2.json"
+ },
+ "eval_from": null,
+ "origin_classes": [
+  "2まくり",
+  "3まくり",
+  "4まくり",
+  "5まくり",
+  "6まくり",
+  "3まくり差し",
+  "その他"
+ ],
+ "bands": {
+  "lo": 0.0,
+  "hi": 1.01
+ },
+ "bands_method": "全レース同じ確率のため帯を分けない(全レース○)",
+ "success_definition": null,
+ "escape_definition": null,
+ "soft_label_table": "labels/soft-v2.json",
+ "entry": "models/baseline_v2.py",
+ "code_files": [
+  "models/baseline_v2.py"
+ ],
+ "code_files_hash": "sha256:dfe2326631ada5f519ca9605c7789d5f7d1a180d46ba86ad4898cde4f5b1fb11",
+ "notes": [
+  "評価期間(2026-09-01〜10-01)の結果は作るときに使っていない。ただし soft-v2 の表は、評価期間に含まれる手動判定40レースの照合を使っている(基準モデルと本モデルに同じだけ効く)",
+  "成功確率・1号艇・足の評価は出さない(null)"
+ ]
+}

@@ -1,0 +1,65 @@
+{
+ "version": "s4-v1",
+ "purpose": "S4 本モデル(レース前の情報だけで起点7分類・動き・STを出す)。評価期間 2026-09-01〜10-01 の大村で baseline-v2 と比べる。この版の過去レースの記録は段階2→3の判定に使わない",
+ "model": "候補 A(起点7分類の多項ロジスティック)。混ぜる割合 λ: 起点 1.0・動き 0.6。L2 α: 起点 1.0・動き 1.0。特徴 162 個(出走表・展示・風波・選手×コースの履歴)。ST はコース切片+β×過去20走の平均ST",
+ "frozen_at": "2026-10-08T05:31:23+00:00",
+ "built_from": {
+  "data": "kyotei_mark1/data/results_all.jsonl・analysis/_gate_extract.json(judge・aux_all)・results_omura_long.jsonl(STの履歴)",
+  "period": "学習 〜20260831 の判定済み・出走表あり・枠なり・除外なし 2464 レース(全会場、戸田除く。大村 407)。候補と λ の選択は大村 20260702〜20260831 の 309 レースの日付順交差検証(5 ブロック)",
+  "labels": "大村 labels/soft-v2.json、他会場 labels/soft-v1.json",
+  "base": "baseline-v2",
+  "cv": {
+   "base_brier_soft": 0.2782885365268644,
+   "chosen": {
+    "candidate": "A",
+    "origin_alpha": 1.0,
+    "origin_lambda": 1.0,
+    "cv_brier_soft": 0.274338531020673,
+    "move_alpha": 1.0,
+    "move_lambda": 0.6,
+    "cv_move_brier_sum": 1.066960884495749
+   },
+   "bss_race": {
+    "bss": 0.014193921012661226,
+    "lo": 0.0023934285006008255,
+    "hi": 0.02502031527040656
+   },
+   "bss_day": {
+    "bss": 0.014193921012661226,
+    "lo": 0.0038562410031811566,
+    "hi": 0.024472910930698845
+   }
+  },
+  "cv_result_file": "reports/s4/cv_result.json"
+ },
+ "eval_from": null,
+ "origin_classes": [
+  "2まくり",
+  "3まくり",
+  "4まくり",
+  "5まくり",
+  "6まくり",
+  "3まくり差し",
+  "その他"
+ ],
+ "bands": {
+  "lo": 0.31881,
+  "hi": 0.335899
+ },
+ "bands_method": "構築期間の交差検証の予測の主シナリオ確率の3分位(GATE 第5章)",
+ "success_definition": null,
+ "escape_definition": null,
+ "soft_label_table": "labels/soft-v2.json",
+ "entry": "models/s4_v1.py",
+ "code_files": [
+  "models/s4_v1.py",
+  "models/s4_v1_params.json"
+ ],
+ "code_files_hash": "sha256:d8421312cee163c6384fe37e03a4edef9cf5565c671ac68362fab506568ec73d",
+ "notes": [
+  "評価期間(2026-09-01〜10-01)は候補・λ・特徴を決めるときに見ていない(S4_DESIGN.md 2.3)",
+  "soft-v2 の表は評価期間に含まれる手動判定40レースの照合を使っている(基準と本モデルに同じだけ効く。S4_DESIGN.md 第3章)",
+  "オッズ・本番STは使わない。履歴の特徴はその日より前の判定済みレースだけ",
+  "成功確率・1号艇・足の評価は出さない(null)"
+ ]
+}

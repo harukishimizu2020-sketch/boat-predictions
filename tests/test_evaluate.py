@@ -98,6 +98,25 @@ class TestLabels(unittest.TestCase):
         self.assertEqual(E.soft_move(4, 'まくり', '低', lab, {'order': [4, 1, 2, 3, 5, 6], 'kimarite': 'まくり'}), [0.0, 1.0, 0.0])
         for b in range(2, 7): self.assertAlmostEqual(sum(lab['fallback'][str(b)]), 1.0, places=9)
 
+    def test_label_file_soft_v2(self):
+        # soft-v2(2026-10-08、手動判定40レース後の大村専用の表): 確信度「高」も表の値、2号艇は table2 の差し・まくり
+        lab = E.load_labels(os.path.join(HERE, 'labels', 'soft-v2.json'))
+        self.assertEqual(E.soft_move(3, 'まくり', '低', lab), [.1062, .3459, .5479])
+        self.assertEqual(E.soft_move(5, 'まくり', '高', lab), [.003, .9296, .0674])  # high_self(0.97)ではなく表
+        self.assertEqual(E.soft_move(2, 'まくり', '低', lab), [.375, .625, 0.0])
+        self.assertEqual(E.soft_move(2, '差し', '高', lab), [.9943, .0057, 0.0])
+        self.assertEqual(E.soft_move(2, 'まくり差し', '中', lab), [.111 + .8821, .0069, 0.0])  # table2 に無い → table から差しへ移す
+        self.assertEqual(E.soft_move(4, 'まくり', '低', lab, {'order': [4, 1, 2, 3, 5, 6], 'kimarite': 'まくり'}), [0.0, 1.0, 0.0])
+        for k, d in list(lab['table'].items()) + list(lab['table2'].items()): self.assertAlmostEqual(sum(d.values()), 1.0, places=9, msg=k)
+        for b in range(2, 7): self.assertAlmostEqual(sum(lab['fallback'][str(b)]), 1.0, places=9)
+
+    def test_baseline_v2_model(self):
+        man = P.load_manifest(HERE, 'baseline-v2')
+        self.assertEqual(man['soft_label_table'], 'labels/soft-v2.json')
+        self.assertEqual(P.code_files_hash(man['code_files'], HERE), man['code_files_hash'])
+        out = P.normalize_output(P.run_model(man, {}, HERE))
+        self.assertAlmostEqual(sum(out['origin']), 1.0, places=6)
+
     def test_baseline_v1_model(self):
         man = P.load_manifest(HERE, 'baseline-v1')
         self.assertEqual(P.code_files_hash(man['code_files'], HERE), man['code_files_hash'])

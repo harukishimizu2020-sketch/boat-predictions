@@ -133,3 +133,9 @@ python -m unittest discover -s tests   # 確認用テスト
 ## 10. 評価器と基準モデル(S3、2026-10-07)
 
 評価器 `evaluate.py`、正解ラベルの表 `labels/soft-v1.json`、基準モデル `baseline-v1`(`models/baseline_v1.py`・`versions/baseline-v1.json`)、作成用の道具 `tools/`(基準の作成 `build_baseline.py`、試しの記録 `backtest.py`、想定外の数え方の模擬計算 `sim_unexpected.py`)を追加した。過去レース(大村 2026-09-01〜10-01、数える 176 件)で試した結果、確認したこと、評価の数え方2点(2026-10-07 ユーザー決定: 段階2→3の条件2「想定外」はソフト正解の期待件数で数える、確信度「低」のラベルも主集計に含める)は `S3_REPORT.md` にまとめた。
+
+## 11. 大村専用の表 soft-v2 と S4 本モデル(2026-10-08、未push)
+
+手動判定40レースの後の大村専用の表を `labels/soft-v2.json` にした(作成 `tools/build_v2.py`。soft-v1 は残す)。評価器 `evaluate.soft_move` は、表に確信度「高」の行があればそれを使うように変えた(soft-v1 には「高」の行が無いので結果は変わらない)。soft-v2 で作り直した基準モデルは `baseline-v2`。
+S4 本モデル `s4-v1`(`models/s4_v1.py`・`s4_v1_params.json`、作成 `tools/build_s4.py`、試しの記録 `tools/backtest_s4.py`)の設計は `S4_DESIGN.md`、結果は `S4_REPORT.md`。段階2→3の合格条件の計算し直しは、共有フォルダの `gate_v2/GATE_stage2to3_v2_20261008.md`。
+2026-10-08 ユーザー決定: 段階2→3の判定の採点は soft-v2、比べる基準は baseline-v2(本番の記録を始める前に版を固定し、途中で変えない)。
