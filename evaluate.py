@@ -465,14 +465,14 @@ def load_input(root, rec):
 
 def coverage(root, pairs, manifest, results, include_backtest):
     """記録漏れ(README 第4章: 自信のあるレースだけ記録することへの対策)。
-    対象の期間(eval_from の日から最後の記録の日まで)の大村の枠なり・除外なしのレースのうち、記録が無いもの"""
+    対象の期間(eval_from の日から最後の記録の日まで)の、版の対象会場(venues、書いていない版は大村だけ)の枠なり・除外なしのレースのうち、記録が無いもの"""
     el = eligible(pairs, manifest, include_backtest)
     if not el: return {'n_target': 0, 'n_missing': 0, 'rate': None}
     ef = manifest.get('eval_from')
     start = (pr.parse_time(ef) + pr.JST).strftime('%Y%m%d') if (ef and not include_backtest) else min(r['race']['hd'] for _, r, _ in el)
     end = max(r['race']['hd'] for _, r, _ in el)
     have = {r['race']['race_id'] for _, r, _ in el}
-    target = sorted(k for k, o in results.items() if str(o.get('jcd')) == '24' and start <= o['hd'] <= end and race_valid(o)[0])
+    target = sorted(k for k, o in results.items() if str(o.get('jcd')).zfill(2) in pr.venues_of(manifest) and start <= o['hd'] <= end and race_valid(o)[0])
     miss = [k for k in target if k not in have]
     return {'from': start, 'to': end, 'n_target': len(target), 'n_missing': len(miss), 'rate': len(miss) / len(target) if target else None,
             'missing': miss[:50]}
@@ -507,7 +507,7 @@ def run(root, version, base_version, results, judge, labels_path, include_backte
         oc['race']['scored'] = s in chosen and not include_backtest
     if write_outcomes:
         for _, rec, oc in pairs:
-            p = os.path.join(root, 'outcomes', '24', rec['race']['hd'], '%s__%s.outcome.json' % (rec['race']['race_id'], version))
+            p = os.path.join(root, 'outcomes', rec['race']['jcd'], rec['race']['hd'], '%s__%s.outcome.json' % (rec['race']['race_id'], version))
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, 'w', encoding='utf-8', newline='\n') as f: json.dump(oc, f, ensure_ascii=False, indent=1)
     why = collections.Counter(oc['race']['excluded_reason'] or ('数える' if s in chosen else '本番でない・eval_from より前')

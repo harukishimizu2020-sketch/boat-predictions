@@ -15,7 +15,7 @@ def main():
     a = ap.parse_args()
     man = pr.load_manifest(a.root, a.version)
     res = E.load_results(a.results)
-    keys = sorted(k for k, r in res.items() if str(r['jcd']) == '24' and getattr(a, 'from') <= r['hd'] <= a.to)
+    keys = sorted(k for k, r in res.items() if str(r['jcd']).zfill(2) in pr.venues_of(man) and getattr(a, 'from') <= r['hd'] <= a.to)
     n = 0
     for k in keys:
         rec, snap = pr.make_record({'race_id': k}, man, k, None, 'backtest', code_root=a.root)
