@@ -447,6 +447,7 @@ def verify(root, replay=True):
         return ['台帳が JSON として読めない: %s' % e]
     prev, seen, manifests = None, set(), {}
     in_git = _git(root, 'rev-parse', '--is-inside-work-tree') is not None
+    tracked_inputs = set((_git(root, 'ls-files', '--', 'inputs') or '').split()) if in_git else set()
     for i, line in enumerate(led):
         tag = '台帳%d行目(%s)' % (i + 1, line.get('race_id'))
         if line.get('seq') != i + 1: probs.append(tag + ': 連番が飛んでいる')
@@ -463,6 +464,8 @@ def verify(root, replay=True):
             check_record(rec, manifests[v])
             if rec['integrity']['record_hash'] != line['record_hash']: probs.append(tag + ': 台帳と記録のハッシュが違う')
             ipath = os.path.join(root, rec['input']['path'])
+            if not publishes_inputs(manifests[v]) and rec['input']['path'] in tracked_inputs:
+                probs.append(tag + ': 入力を公開しない版なのに、入力の写しが git に載っている(push すると公開される)')
             if not os.path.exists(ipath) and not publishes_inputs(manifests[v]):
                 snap = None  # 入力を公開しない版で、手元に写しが無い(公開リポジトリを複製した人の側)。再現の確認は持ち主の手元で行う
             else:

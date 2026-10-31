@@ -142,13 +142,19 @@ class TestPrivateInputs(Base):
         r2, s2 = P.make_record(snap(), mo, '24_20260910_02', DEADLINE, 'live', code_root=self.root); P.save(r2, s2, self.root)
         P.commit(self.root)
         tracked = self.git('ls-files').split()
-        self.assertIn(r1['input']['path'], [r1['input']['path']])
         self.assertNotIn(r1['input']['path'], tracked)
         self.assertIn(r2['input']['path'], tracked)
         self.assertIn(P.paths_for('01_20260910_01', 't-priv')[0], tracked)
         self.assertEqual(P.verify(self.root, replay=True), [])  # 持ち主の手元(写しあり)
         os.remove(os.path.join(self.root, r1['input']['path']))  # 公開リポジトリを複製した人の側(写しなし)
         self.assertEqual(P.verify(self.root, replay=True), [])
+
+    def test_private_input_pushed_is_problem(self):
+        mp = self.add('t-priv', False)
+        r, s = P.make_record(snap(), mp, '01_20260910_01', DEADLINE, 'live', code_root=self.root); P.save(r, s, self.root)
+        P.commit(self.root)
+        self.git('add', '-f', r['input']['path']); self.git('commit', '-qm', 'oops')  # 手で git add -A などをして載せてしまった
+        self.assertTrue(any('入力の写しが git に載っている' in x for x in P.verify(self.root, replay=True)))
 
     def test_public_inputs_missing_is_problem(self):
         mo = self.add('t-pub', None)

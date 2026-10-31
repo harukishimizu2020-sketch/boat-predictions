@@ -81,9 +81,18 @@ def done_ids(root, state, hd, version):
     return rec, miss
 
 
+def preflight(root):
+    """記録を作る前に、締切前の commit が確実にできるかを確かめる(作ってから commit で失敗すると、締切後に未コミットの記録が残る)"""
+    if pr._git(root, 'rev-parse', '--is-inside-work-tree') is None: raise pr.RecordError('git のリポジトリではありません: ' + root)
+    for k in ('user.name', 'user.email'):
+        if not (pr._git(root, 'config', k) or '').strip():
+            raise pr.RecordError('git の %s が未設定です。リポジトリの中で git config %s "..." を設定してから動かす' % (k, k))
+
+
 def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=60, push=False, t=None):
     """F2〜F5: 締切が近いレースを記録する。1回の呼び出しで、いま取るべきレースを全部処理する"""
     hd = hd or jst_today(); t = t or now()
+    preflight(root)
     man = pr.load_manifest(root, version)
     pl = plan(state, fetcher, hd)
     recd, missed = done_ids(root, state, hd, version)

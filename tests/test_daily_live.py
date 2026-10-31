@@ -38,6 +38,15 @@ class TestDaily(Base):
     def dl(self, minutes):
         return (self.now + dt.timedelta(minutes=minutes) + P.JST).replace(tzinfo=dt.timezone(P.JST)).isoformat()
 
+    def test_tick_refuses_without_git_identity(self):
+        self.git('config', '--unset', 'user.email')
+        f = FakeFetcher(self.hd, {'01_%s_01' % self.hd: self.dl(5)})
+        from unittest import mock
+        with mock.patch.dict(os.environ, {'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1'}):  # この PC の全体設定も見ない
+            with self.assertRaises(P.RecordError):
+                D.tick(self.root, self.state, f, 't24', self.hd, t=self.now)
+        self.assertEqual(P._read_ledger(self.root), [])  # 記録は1件も作っていない
+
     def test_tick_records_due_and_misses_late(self):
         f = FakeFetcher(self.hd, {'01_%s_01' % self.hd: self.dl(5), '13_%s_02' % self.hd: self.dl(60),
                                   '24_%s_03' % self.hd: self.dl(0.5)})

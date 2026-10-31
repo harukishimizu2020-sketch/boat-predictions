@@ -98,7 +98,7 @@ class TestMake(Base):
         with self.assertRaises(P.RecordError): self.make(mode='backtest', model_output=mo)
 
     def test_code_changed(self):
-        with open(os.path.join(self.root, 'models', 'trial_v0.py'), 'a') as f: f.write('\n# 変更\n')
+        with open(os.path.join(self.root, 'models', 'trial_v0.py'), 'a', encoding='utf-8') as f: f.write('\n# 変更\n')
         with self.assertRaises(P.RecordError): self.make()
 
     def test_crlf_same_hash(self):
