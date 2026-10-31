@@ -91,7 +91,17 @@
       "description": "13類(pmap13-v1)の確率。任意(出さない版の記録には項目が無い)。的中の主の物差し(13類3候補・対数損失)はこれで測る",
       "properties": {
         "classes": {"type": "array", "items": {"type": "string"}, "minItems": 13, "maxItems": 13},
-        "p": {"type": "array", "items": {"$ref": "#/definitions/prob"}, "minItems": 13, "maxItems": 13}
+        "p": {"type": "array", "items": {"$ref": "#/definitions/prob"}, "minItems": 13, "maxItems": 13},
+        "conf": {
+          "type": "object", "additionalProperties": false, "required": ["def", "main", "sub", "top3"],
+          "description": "13類の自信度(0〜1)。版の confidence_def の定義で predrec が p から計算する(conf-v0: main=その他を除く上位3つの合計、sub=その他を除く最大確率)",
+          "properties": {
+            "def": {"type": "string"},
+            "main": {"$ref": "#/definitions/prob"},
+            "sub": {"$ref": "#/definitions/prob"},
+            "top3": {"type": "array", "items": {"type": "string"}, "minItems": 3, "maxItems": 3}
+          }
+        }
       }
     },
     "main_scenario": {

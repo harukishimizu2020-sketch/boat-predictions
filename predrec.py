@@ -175,9 +175,27 @@ def check_manifest(manifest):
     if manifest['origin_classes'] != ORIGIN_CLASSES: raise RecordError('版の起点の分類・並び順が predrec と違います')
     if manifest['bands']['lo'] > manifest['bands']['hi']: raise RecordError('版の帯が lo > hi です')
     if manifest['entry'] not in manifest['code_files']: raise RecordError('版の entry が code_files に入っていません')
+    if manifest.get('confidence_def') is not None and manifest['confidence_def'] not in CONF_DEFS:
+        raise RecordError('版の confidence_def が predrec に無い定義です: %s' % manifest['confidence_def'])
     vs = manifest.get('venues')
     if vs is not None and (len(set(vs)) != len(vs) or any(not re.match(r'^(0[1-9]|1\d|2[0-4])$', v) for v in vs)):
         raise RecordError('版の venues は 01〜24 の会場番号(重複なし)')
+
+
+# 13類の自信度(0〜1)。版の confidence_def で定義の版を選ぶ。値は predrec が記録の class13 から計算する(モデルや人が手で書かない)
+# conf-v0(2026-10-31、予測精度スレッドの暫定): 主 = その他を除く13類の上位3つの確率の合計、副 = その他を除く最大確率(本命1つ)。
+# 同率は CLASS13 の並び順で先のもの。的中(ソフト)は同じ3つ・1つの正解確率の合計(evaluate.conf_hits)。
+def _conf_v0(p):
+    idx = sorted(range(len(CLASS13) - 1), key=lambda i: (-p[i], i))
+    return {'main': round(sum(p[i] for i in idx[:3]), 6), 'sub': round(p[idx[0]], 6), 'top3': [CLASS13[i] for i in idx[:3]]}
+
+
+CONF_DEFS = {'conf-v0': _conf_v0}
+
+
+def class13_conf(def_name, p):
+    if def_name not in CONF_DEFS: raise RecordError('自信度の定義 %s は predrec に無い(%s)' % (def_name, ','.join(CONF_DEFS)))
+    return dict(CONF_DEFS[def_name](p), **{'def': def_name})
 
 
 def venues_of(manifest):
@@ -236,6 +254,12 @@ def check_record(rec, manifest):
     if 'class13' in rec:
         if rec['class13']['classes'] != CLASS13: raise RecordError('13類の分類・並び順が違います')
         if abs(sum(rec['class13']['p']) - 1) > PROB_TOL: raise RecordError('13類の確率の合計が1ではありません')
+        cd = manifest.get('confidence_def')
+        if cd is not None and rec['class13'].get('conf') != class13_conf(cd, rec['class13']['p']):
+            raise RecordError('13類の自信度が版の定義(%s)で計算した値と違う' % cd)
+        if cd is None and 'conf' in rec['class13']: raise RecordError('版に confidence_def が無いのに自信度が書いてある')
+    elif manifest.get('confidence_def') is not None:
+        raise RecordError('版に confidence_def があるのに、モデルが13類の確率を出していない')
     if rec['mode'] == 'live':
         d, cr, cap = rec['race']['deadline'], rec['created_at'], rec['input']['captured_at']
         if d is None: raise RecordError('本番の記録には締切時刻が必要です')
@@ -351,7 +375,9 @@ def make_record(snapshot, manifest, race_id, deadline, mode='live', deadline_sou
         'rationale': mo['rationale'],
         'integrity': {'record_hash': None},
     }
-    if 'class13' in mo: rec['class13'] = {'classes': CLASS13, 'p': mo['class13']}
+    if 'class13' in mo:
+        rec['class13'] = {'classes': CLASS13, 'p': mo['class13']}
+        if manifest.get('confidence_def') is not None: rec['class13']['conf'] = class13_conf(manifest['confidence_def'], mo['class13'])
     if mode == 'live' and deadline and dt.datetime.now(dt.timezone.utc) >= parse_time(deadline): raise RecordError('締切を過ぎています')
     rec['integrity']['record_hash'] = record_hash(rec)
     check_record(rec, manifest)
