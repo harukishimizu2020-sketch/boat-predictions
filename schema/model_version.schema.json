@@ -24,6 +24,7 @@
     "sample_rule": {"type": "object", "additionalProperties": false, "required": ["seed", "rate"], "description": "採点の標本の規則(記録の中身を見ずにレースIDだけで決める。tools/daily_live.py sample)",
       "properties": {"seed": {"type": "string"}, "rate": {"type": "number", "minimum": 0, "maximum": 1}, "always": {"type": "array", "items": {"type": "string", "pattern": "^(0[1-9]|1\\d|2[0-4])$"}}}},
     "confidence_def": {"type": ["string", "null"], "description": "13類の自信度の定義の版(predrec.CONF_DEFS、例 conf-v0)。省くと自信度を記録しない。版を固定したら変えない"},
+    "unverified_venues": {"type": "array", "items": {"type": "string", "pattern": "^(0[1-9]|1\\d|2[0-4])$"}, "uniqueItems": true, "description": "記録はするが、作るときに成績を確かめていない会場。採点の集計では分けて出す"},
     "snapshot_builder": {"type": ["string", "null"], "description": "記録の前に snapshot に履歴などを足す関数 build(snap, ctx) のファイル(code_files に入れる)。tools/daily_live.py が使う。足した後の snapshot をハッシュして残す"},
     "publish_inputs": {"type": "boolean", "description": "false なら入力の写し(inputs/)を公開リポジトリに載せず、ハッシュだけ公開する。省くと載せる"},
     "venues": {"type": "array", "items": {"type": "string", "pattern": "^(0[1-9]|1\\d|2[0-4])$"}, "minItems": 1, "uniqueItems": true, "description": "この版が記録してよい会場番号。省くと大村(24)だけ(2026-10-31 より前の版との互換)"}

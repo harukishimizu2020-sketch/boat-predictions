@@ -1,0 +1,286 @@
+{
+ "key": "13_20261101_08",
+ "captured_at": "2026-11-01T04:55:00+00:00",
+ "card": [
+  {
+   "boat": 1,
+   "toban": "9001",
+   "name": "選手1",
+   "grade": "A1",
+   "F": 0.0,
+   "L": 0.0,
+   "startAvg": 0.14,
+   "winAll": 7.1,
+   "win2All": 51,
+   "win3All": 66,
+   "winLocal": 6.7,
+   "win2Local": 47,
+   "win3Local": 62,
+   "motorNo": "11",
+   "motor2": 32,
+   "motor3": 50,
+   "boatNo": "41",
+   "boat2": 34,
+   "boat3": 51
+  },
+  {
+   "boat": 2,
+   "toban": "9002",
+   "name": "選手2",
+   "grade": "A2",
+   "F": 0.0,
+   "L": 0.0,
+   "startAvg": 0.15,
+   "winAll": 6.7,
+   "win2All": 47,
+   "win3All": 62,
+   "winLocal": 6.4,
+   "win2Local": 44,
+   "win3Local": 59,
+   "motorNo": "12",
+   "motor2": 34,
+   "motor3": 52,
+   "boatNo": "42",
+   "boat2": 35,
+   "boat3": 52
+  },
+  {
+   "boat": 3,
+   "toban": "9003",
+   "name": "選手3",
+   "grade": "B1",
+   "F": 0.0,
+   "L": 0.0,
+   "startAvg": 0.16,
+   "winAll": 6.3,
+   "win2All": 43,
+   "win3All": 58,
+   "winLocal": 6.1,
+   "win2Local": 41,
+   "win3Local": 56,
+   "motorNo": "13",
+   "motor2": 36,
+   "motor3": 54,
+   "boatNo": "43",
+   "boat2": 36,
+   "boat3": 53
+  },
+  {
+   "boat": 4,
+   "toban": "9004",
+   "name": "選手4",
+   "grade": "B1",
+   "F": 0.0,
+   "L": 0.0,
+   "startAvg": 0.17,
+   "winAll": 5.9,
+   "win2All": 39,
+   "win3All": 54,
+   "winLocal": 5.8,
+   "win2Local": 38,
+   "win3Local": 53,
+   "motorNo": "14",
+   "motor2": 38,
+   "motor3": 56,
+   "boatNo": "44",
+   "boat2": 37,
+   "boat3": 54
+  },
+  {
+   "boat": 5,
+   "toban": "9005",
+   "name": "選手5",
+   "grade": "A1",
+   "F": 0.0,
+   "L": 0.0,
+   "startAvg": 0.18,
+   "winAll": 5.5,
+   "win2All": 35,
+   "win3All": 50,
+   "winLocal": 5.5,
+   "win2Local": 35,
+   "win3Local": 50,
+   "motorNo": "15",
+   "motor2": 40,
+   "motor3": 58,
+   "boatNo": "45",
+   "boat2": 38,
+   "boat3": 55
+  },
+  {
+   "boat": 6,
+   "toban": "9006",
+   "name": "選手6",
+   "grade": "B2",
+   "F": 0.0,
+   "L": 0.0,
+   "startAvg": 0.19,
+   "winAll": 5.1,
+   "win2All": 31,
+   "win3All": 46,
+   "winLocal": 5.2,
+   "win2Local": 32,
+   "win3Local": 47,
+   "motorNo": "16",
+   "motor2": 42,
+   "motor3": 60,
+   "boatNo": "46",
+   "boat2": 39,
+   "boat3": 56
+  }
+ ],
+ "before": {
+  "boats": {
+   "1": {
+    "tenji_time": 6.7,
+    "tilt": -0.5,
+    "weight": 51.0,
+    "weight_adjust": 0.0,
+    "parts_exchange": null,
+    "propeller": null,
+    "orig": {
+     "isshu": 36.5,
+     "hanshu": null,
+     "mawariashi": 11.1,
+     "chokusen": null
+    }
+   },
+   "2": {
+    "tenji_time": 6.72,
+    "tilt": -0.5,
+    "weight": 51.5,
+    "weight_adjust": 0.0,
+    "parts_exchange": null,
+    "propeller": null,
+    "orig": {
+     "isshu": 36.6,
+     "hanshu": null,
+     "mawariashi": 11.15,
+     "chokusen": null
+    }
+   },
+   "3": {
+    "tenji_time": 6.74,
+    "tilt": 0.0,
+    "weight": 52.0,
+    "weight_adjust": 0.0,
+    "parts_exchange": null,
+    "propeller": null,
+    "orig": {
+     "isshu": 36.7,
+     "hanshu": null,
+     "mawariashi": 11.2,
+     "chokusen": null
+    }
+   },
+   "4": {
+    "tenji_time": 6.76,
+    "tilt": 0.0,
+    "weight": 52.5,
+    "weight_adjust": 0.0,
+    "parts_exchange": null,
+    "propeller": null,
+    "orig": {
+     "isshu": 36.8,
+     "hanshu": null,
+     "mawariashi": 11.25,
+     "chokusen": null
+    }
+   },
+   "5": {
+    "tenji_time": 6.78,
+    "tilt": 0.5,
+    "weight": 53.0,
+    "weight_adjust": 0.0,
+    "parts_exchange": null,
+    "propeller": null,
+    "orig": {
+     "isshu": 36.9,
+     "hanshu": null,
+     "mawariashi": 11.3,
+     "chokusen": null
+    }
+   },
+   "6": {
+    "tenji_time": 6.8,
+    "tilt": -0.5,
+    "weight": 53.5,
+    "weight_adjust": 0.0,
+    "parts_exchange": null,
+    "propeller": null,
+    "orig": {
+     "isshu": 37.0,
+     "hanshu": null,
+     "mawariashi": 11.35,
+     "chokusen": null
+    }
+   }
+  },
+  "weather": {
+   "weather": "晴",
+   "air_temp_c": 20.0,
+   "wind_speed_m": 2.0,
+   "wind_direction_code": "5",
+   "water_temp_c": 18.0,
+   "wave_cm": 2.0,
+   "observed": "水面気象情報7R時点",
+   "source": "boatrace.jp"
+  },
+  "start_exhibition": {
+   "source": "boatrace.jp",
+   "by_course": [
+    {
+     "course": 1,
+     "boat": "1",
+     "st": 0.12,
+     "flying": false,
+     "late": false,
+     "st_raw": ".12"
+    },
+    {
+     "course": 2,
+     "boat": "2",
+     "st": 0.1,
+     "flying": false,
+     "late": false,
+     "st_raw": ".10"
+    },
+    {
+     "course": 3,
+     "boat": "3",
+     "st": 0.14,
+     "flying": false,
+     "late": false,
+     "st_raw": ".14"
+    },
+    {
+     "course": 4,
+     "boat": "4",
+     "st": 0.15,
+     "flying": false,
+     "late": false,
+     "st_raw": ".15"
+    },
+    {
+     "course": 5,
+     "boat": "5",
+     "st": 0.11,
+     "flying": false,
+     "late": false,
+     "st_raw": ".11"
+    },
+    {
+     "course": 6,
+     "boat": "6",
+     "st": 0.13,
+     "flying": false,
+     "late": false,
+     "st_raw": ".13"
+    }
+   ]
+  }
+ },
+ "raw": {},
+ "sources": [],
+ "race_class": "is-G1b"
+}

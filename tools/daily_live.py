@@ -149,6 +149,8 @@ def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=90, push
     clock = clock or ((lambda: t) if t else now)
     hd = hd or jst_today(); t0 = clock()
     preflight(root)
+    if ctx and ctx.get('results_store') and not os.path.exists(ctx['results_store']):
+        raise pr.RecordError('結果の蓄積が無い: %s' % ctx['results_store'])
     vs = _versions(version)
     mans = {v: pr.load_manifest(root, v) for v in vs}
     builders = {v: load_builder(root, mans[v]) for v in vs}
