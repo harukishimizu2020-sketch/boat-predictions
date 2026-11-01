@@ -3,7 +3,7 @@
 
 使い方(PC で、公開リポジトリ prediction_record の中から):
   python tools/daily_live.py plan   --state <状態フォルダ> --fetcher <取得モジュール.py> [--hd YYYYMMDD]
-  python tools/daily_live.py tick   --state ... --fetcher ... --version <版> [--lead-min 8] [--push]
+  python tools/daily_live.py tick   --state ... --fetcher ... --version <版[,版...]> [--lead-min 8] [--push] [--ctx '{...}']
   python tools/daily_live.py loop   --state ... --fetcher ... --version <版> [--push]   (plan のあと、全レースが済むまで1分ごとに tick、最後に close)
   python tools/daily_live.py close  --state ... --version <版> [--hd YYYYMMDD]   (記録にも漏れにも無いまま締切を過ぎたレースを漏れに入れる)
   python tools/daily_live.py sample --state ... --version <版> --results <公式結果.jsonl> --hd YYYYMMDD
@@ -93,73 +93,104 @@ def preflight(root):
             raise pr.RecordError('git の %s が未設定です。リポジトリの中で git config %s "..." を設定してから動かす' % (k, k))
 
 
-def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=90, push=False, t=None, clock=None, commit_buffer_s=15):
+def load_builder(root, manifest):
+    """版の設定 snapshot_builder(code_files に入れたファイル)の build(snap, ctx) を読む。無ければ None。
+    記録の前に snapshot に履歴などを足す関数(足した後の snapshot をハッシュして残すので、replay も同じ入力で確かめられる)"""
+    path = manifest.get('snapshot_builder')
+    if not path: return None
+    if path not in manifest['code_files']: raise pr.RecordError('snapshot_builder は版の code_files に入れる: ' + path)
+    spec = importlib.util.spec_from_file_location('snap_builder_' + manifest['version'].replace('-', '_').replace('.', '_'), os.path.join(root, path))
+    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    return m.build
+
+
+def _versions(version):
+    return [v for v in (version.split(',') if isinstance(version, str) else list(version)) if v]
+
+
+def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=90, push=False, t=None, clock=None, commit_buffer_s=15, ctx=None):
     """F2〜F5: 締切が近いレースを締切の順に記録する。1回の呼び出しで、いま取るべきレースを全部処理する。
-    時刻はレースごとに今の時刻で確かめ、記録は1件ごとにすぐ commit(と push)する
+    version はカンマ区切りで複数の版にできる(取得は1回、記録は版ごと。基準の版と本モデルの版を同じ入力で並べるため)。
+    時刻はレースごとに今の時刻で確かめ、記録は1レースごとにすぐ commit(と push)する
     (2026-11-01 PC の試運転: 最後にまとめて commit したら、締切39秒前に作った記録の commit が締切の14秒後になった)。
-    取得が締切の commit_buffer_s 秒前までかかったら、記録を作らずに漏れにする。t は試験用の固定時刻、clock は試験用の時計"""
+    取得が締切の commit_buffer_s 秒前までかかったら、記録を作らずに漏れにする。t は試験用の固定時刻、clock は試験用の時計。
+    ctx は snapshot_builder に渡す辞書(公式結果の蓄積の場所など)"""
     clock = clock or ((lambda: t) if t else now)
     hd = hd or jst_today(); t0 = clock()
     preflight(root)
-    man = pr.load_manifest(root, version)
+    vs = _versions(version)
+    mans = {v: pr.load_manifest(root, v) for v in vs}
+    builders = {v: load_builder(root, mans[v]) for v in vs}
     pl = plan(state, fetcher, hd)
-    recd, missed = done_ids(root, state, hd, version)
-    venues = set(pr.venues_of(man))
+    done = {v: done_ids(root, state, hd, v) for v in vs}
     made, miss_new, waiting, commits, pushed = [], [], 0, [], None
 
-    def miss(rid, reason, at):
-        m = {'race_id': rid, 'version': version, 'reason': reason, 'at': at.isoformat()}
+    def miss(rid, v, reason, at):
+        m = {'race_id': rid, 'version': v, 'reason': reason, 'at': at.isoformat()}
         _jl_append(miss_path(state, hd), m); miss_new.append(m)
 
     for r in pl['races']:
         rid = r['race_id']
-        if rid in recd or rid in missed or rid[:2] not in venues: continue
+        todo = [v for v in vs if rid not in done[v][0] and rid not in done[v][1] and rid[:2] in pr.venues_of(mans[v])]
+        if not todo: continue
         d = pr.parse_time(r['deadline']); cur = clock()
         if cur >= d - dt.timedelta(seconds=margin_s):
-            miss(rid, '締切に間に合わなかった(取得の時間帯に処理できなかった)', cur); continue
+            for v in todo: miss(rid, v, '締切に間に合わなかった(取得の時間帯に処理できなかった)', cur)
+            continue
         if cur < d - dt.timedelta(minutes=lead_min):
             waiting += 1; continue
         try:
             card = r.get('card')
             if card is None and hasattr(fetcher, 'card'): card = fetcher.card(rid)
             b = fetcher.before(rid)
-            cur = clock()
-            if cur >= d - dt.timedelta(seconds=commit_buffer_s):
-                miss(rid, '取得が締切の直前までかかった(%d秒前を切った)' % commit_buffer_s, cur); continue
-            snap = {'key': rid, 'captured_at': b['captured_at'], 'card': card, 'before': b.get('normalized'),
-                    'raw': b.get('raw'), 'sources': b.get('sources')}
-            rec, s = pr.make_record(snap, man, rid, r['deadline'], 'live', deadline_source=r.get('deadline_source'), code_root=root)
-            pr.save(rec, s, root); made.append(rid)
         except Exception as e:  # 取れなかったら次の tick でもう一度(締切の margin 秒前までに取れなければ misses)
             # 取り直しのレースは「待ち」に数える(数えないと loop が終わり、記録にも漏れにも残らないレースが出る。2026-11-01 下関12R)
             waiting += 1
             _jl_append(log_path(state), {'at': clock().isoformat(), 'event': 'retry', 'race_id': rid, 'error': repr(e)[:300]})
             continue
-        c = pr.commit(root)   # 1件ごとにすぐ。失敗は RecordError で止める(preflight を通っていれば起きない想定)
+        base = {'key': rid, 'captured_at': b['captured_at'], 'card': card, 'before': b.get('normalized'),
+                'raw': b.get('raw'), 'sources': b.get('sources')}
+        any_made = False
+        for v in todo:
+            try:
+                snap = json.loads(json.dumps(base))
+                if builders[v]: snap = builders[v](snap, dict(ctx or {}, hd=hd, race_id=rid, state=state))
+                cur = clock()
+                if cur >= d - dt.timedelta(seconds=commit_buffer_s):
+                    miss(rid, v, '取得が締切の直前までかかった(%d秒前を切った)' % commit_buffer_s, cur); continue
+                rec, sn = pr.make_record(snap, mans[v], rid, r['deadline'], 'live', deadline_source=r.get('deadline_source'), code_root=root)
+                pr.save(rec, sn, root); made.append(rid if len(vs) == 1 else '%s@%s' % (rid, v)); any_made = True
+            except Exception as e:
+                waiting += 1
+                _jl_append(log_path(state), {'at': clock().isoformat(), 'event': 'retry', 'race_id': rid, 'version': v, 'error': repr(e)[:300]})
+        if not any_made: continue
+        c = pr.commit(root)   # 1レースごとにすぐ。失敗は RecordError で止める(preflight を通っていれば起きない想定)
         if c: commits.append(c)
         if c and push:
             ok = pr._git(root, 'push', '-q', 'origin', 'HEAD') is not None
             pushed = ok if pushed is None else (pushed and ok)
             if not ok: _jl_append(log_path(state), {'at': clock().isoformat(), 'event': 'push_failed', 'race_id': rid})
-    _jl_append(log_path(state), {'at': t0.isoformat(), 'end': clock().isoformat(), 'event': 'tick', 'hd': hd, 'made': len(made),
+    _jl_append(log_path(state), {'at': t0.isoformat(), 'end': clock().isoformat(), 'event': 'tick', 'hd': hd, 'versions': vs, 'made': len(made),
                                  'missed': len(miss_new), 'waiting': waiting, 'commits': len(commits), 'pushed': pushed})
     return {'made': made, 'missed': miss_new, 'waiting': waiting, 'commit': commits[-1] if commits else None,
             'commits': len(commits), 'pushed': pushed}
 
 
 def close_day(root, state, version, hd, t=None):
-    """その日の終わりに、記録にも漏れにも無いまま締切を過ぎたレースを漏れに入れる(どのレースも必ずどちらかに残す)"""
+    """その日の終わりに、記録にも漏れにも無いまま締切を過ぎたレースを漏れに入れる(どのレースも必ずどちらかに残す)。version はカンマ区切り可"""
     t = t or now()
-    man = pr.load_manifest(root, version)
     pl = pr._load(plan_path(state, hd)) if os.path.exists(plan_path(state, hd)) else {'races': []}
-    recd, missed = done_ids(root, state, hd, version)
-    venues = set(pr.venues_of(man)); out = []
-    for r in pl['races']:
-        rid = r['race_id']
-        if rid in recd or rid in missed or rid[:2] not in venues: continue
-        if t >= pr.parse_time(r['deadline']):
-            m = {'race_id': rid, 'version': version, 'reason': '処理されないまま締切を過ぎた(取得の取り直し中・処理の停止など)', 'at': t.isoformat()}
-            _jl_append(miss_path(state, hd), m); out.append(m)
+    out = []
+    for v in _versions(version):
+        man = pr.load_manifest(root, v)
+        recd, missed = done_ids(root, state, hd, v)
+        venues = set(pr.venues_of(man))
+        for r in pl['races']:
+            rid = r['race_id']
+            if rid in recd or rid in missed or rid[:2] not in venues: continue
+            if t >= pr.parse_time(r['deadline']):
+                m = {'race_id': rid, 'version': v, 'reason': '処理されないまま締切を過ぎた(取得の取り直し中・処理の停止など)', 'at': t.isoformat()}
+                _jl_append(miss_path(state, hd), m); out.append(m)
     _jl_append(log_path(state), {'at': t.isoformat(), 'event': 'close_day', 'hd': hd, 'missed': len(out)})
     return out
 
@@ -188,7 +219,9 @@ def main():
     ap.add_argument('--version'); ap.add_argument('--hd'); ap.add_argument('--results')
     ap.add_argument('--lead-min', type=float, default=8.0); ap.add_argument('--margin-s', type=int, default=90)
     ap.add_argument('--push', action='store_true')
+    ap.add_argument('--ctx', help='snapshot_builder に渡す JSON(例 {"results_dir": "..."})')
     a = ap.parse_args()
+    ctx = json.loads(a.ctx) if a.ctx else None
     hd = a.hd or jst_today()
     if a.cmd == 'sample':
         print(json.dumps(sample(a.state, pr.load_manifest(a.root, a.version), E.load_results(a.results), hd)['n']))
@@ -199,7 +232,7 @@ def main():
     if a.cmd == 'plan':
         print(len(plan(a.state, f, hd)['races'])); return
     while True:
-        r = tick(a.root, a.state, f, a.version, hd, a.lead_min, a.margin_s, a.push)
+        r = tick(a.root, a.state, f, a.version, hd, a.lead_min, a.margin_s, a.push, ctx=ctx)
         print(json.dumps({k: (len(v) if isinstance(v, list) else v) for k, v in r.items()}, ensure_ascii=False), flush=True)
         if a.cmd == 'tick': break
         if r['waiting'] == 0 and not r['made']:

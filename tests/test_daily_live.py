@@ -79,6 +79,28 @@ class TestDaily(Base):
         r2 = D.tick(self.root, self.state, f, 't24', self.hd, t=later)
         self.assertEqual((r2['made'], r2['missed'], r2['waiting']), ([], [], 0))
 
+    def test_two_versions_one_fetch_and_builder(self):
+        # 2つ目の版は snapshot_builder で履歴を足す。取得は1回、記録は版ごと、1レースで commit 1回
+        with open(os.path.join(self.root, 'models', 'hist_snap.py'), 'w', encoding='utf-8') as fh:
+            fh.write("def build(snap, ctx):\n    snap['history'] = {'hd': ctx['hd'], 'src': ctx.get('results_dir')}\n    return snap\n")
+        m = load(os.path.join(self.root, 'versions', 't24.json'))
+        m.update(version='t24b', snapshot_builder='models/hist_snap.py', code_files=m['code_files'] + ['models/hist_snap.py'])
+        m['code_files_hash'] = P.code_files_hash(m['code_files'], self.root)
+        dump(m, os.path.join(self.root, 'versions', 't24b.json'))
+        self.git('add', '-A'); self.git('commit', '-qm', 't24b')
+        rid = '01_%s_01' % self.hd
+        f = FakeFetcher(self.hd, {rid: self.dl(5)})
+        r = D.tick(self.root, self.state, f, 't24,t24b', self.hd, t=self.now, ctx={'results_dir': 'X'})
+        self.assertEqual(sorted(r['made']), [rid + '@t24', rid + '@t24b'])
+        self.assertEqual(f.calls, [rid])          # 取得は1回
+        self.assertEqual(r['commits'], 1)
+        inp = load(os.path.join(self.root, P.paths_for(rid, 't24b')[1]))
+        self.assertEqual(inp['history'], {'hd': self.hd, 'src': 'X'})
+        self.assertNotIn('history', load(os.path.join(self.root, P.paths_for(rid, 't24')[1])))
+        self.assertEqual(P.verify(self.root, replay=True), [])
+        r2 = D.tick(self.root, self.state, f, 't24,t24b', self.hd, t=self.now)
+        self.assertEqual(r2['made'], [])
+
     def test_card_fetched_at_tick(self):
         class LazyCard(FakeFetcher):  # 朝は締切時刻だけ、出走表は記録の直前に取る
             def racelist(self, hd):
