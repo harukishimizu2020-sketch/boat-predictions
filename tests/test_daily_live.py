@@ -43,6 +43,31 @@ class TestDaily(Base):
     def dl(self, minutes):
         return (self.now + dt.timedelta(minutes=minutes) + P.JST).replace(tzinfo=dt.timezone(P.JST)).isoformat()
 
+    def test_commit_each_record_before_its_deadline(self):
+        f = FakeFetcher(self.hd, {'01_%s_01' % self.hd: self.dl(4), '02_%s_01' % self.hd: self.dl(5)})
+        r = D.tick(self.root, self.state, f, 't24', self.hd, t=self.now)
+        self.assertEqual(len(r['made']), 2)
+        self.assertEqual(r['commits'], 2)   # まとめず1件ごと
+        log = self.git('log', '--format=%s').splitlines()
+        self.assertEqual(sum(1 for x in log if x.startswith('予測記録 1件')), 2)
+        self.assertEqual(P.verify(self.root, replay=True), [])
+
+    def test_slow_fetch_becomes_miss(self):
+        # 取得に時間がかかり、取り終えた時点で締切の15秒前を切ったら記録を作らない(締切後の commit を防ぐ)
+        clk = {'t': self.now}
+        d1 = self.now + dt.timedelta(minutes=3)
+        class Slow(FakeFetcher):
+            def before(s2, rid):
+                out = FakeFetcher.before(s2, rid)
+                if rid.startswith('01_'): clk['t'] = d1 - dt.timedelta(seconds=10)
+                return out
+        f = Slow(self.hd, {'01_%s_01' % self.hd: self.dl(3), '02_%s_01' % self.hd: self.dl(30)})
+        r = D.tick(self.root, self.state, f, 't24', self.hd, lead_min=40, clock=lambda: clk['t'])
+        self.assertEqual([m['race_id'] for m in r['missed']], ['01_%s_01' % self.hd])
+        self.assertIn('直前までかかった', r['missed'][0]['reason'])
+        self.assertEqual(r['made'], ['02_%s_01' % self.hd])
+        self.assertEqual(P.verify(self.root, replay=True), [])
+
     def test_card_fetched_at_tick(self):
         class LazyCard(FakeFetcher):  # 朝は締切時刻だけ、出走表は記録の直前に取る
             def racelist(self, hd):

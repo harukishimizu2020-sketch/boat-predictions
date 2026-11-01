@@ -15,7 +15,7 @@
  (2026-11-01 PC の試運転: 朝に全レースの出走表を取ると boatrace.jp が1回約10秒で plan に約32分かかり、終わる前に16レースの締切が過ぎた。
   racelist は会場ごとに締切時刻の一覧だけを取り、出走表は tick で取る形を勧める)。
 決まり:
-  - 締切の lead 分前から締切の margin 秒前までに、直前情報を取り、版のモデルで記録を作る。取れない・間に合わないレースは
+  - 締切の lead 分前から締切の margin 秒前(既定90秒)までに、直前情報を取り、版のモデルで記録を作る。取れない・間に合わないレースは
     misses に理由つきで残し、後から予測を足さない(締切後は作らない。predrec も拒否する)。
   - 採点の標本は記録の中身を見ずに、レースIDだけで決める(sha256(種|レースID) が rate 未満、always の会場は全部)。
     種と率は版の設定 sample_rule に書き、版を固定したら変えない。
@@ -92,41 +92,56 @@ def preflight(root):
             raise pr.RecordError('git の %s が未設定です。リポジトリの中で git config %s "..." を設定してから動かす' % (k, k))
 
 
-def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=60, push=False, t=None):
-    """F2〜F5: 締切が近いレースを記録する。1回の呼び出しで、いま取るべきレースを全部処理する"""
-    hd = hd or jst_today(); t = t or now()
+def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=90, push=False, t=None, clock=None, commit_buffer_s=15):
+    """F2〜F5: 締切が近いレースを締切の順に記録する。1回の呼び出しで、いま取るべきレースを全部処理する。
+    時刻はレースごとに今の時刻で確かめ、記録は1件ごとにすぐ commit(と push)する
+    (2026-11-01 PC の試運転: 最後にまとめて commit したら、締切39秒前に作った記録の commit が締切の14秒後になった)。
+    取得が締切の commit_buffer_s 秒前までかかったら、記録を作らずに漏れにする。t は試験用の固定時刻、clock は試験用の時計"""
+    clock = clock or ((lambda: t) if t else now)
+    hd = hd or jst_today(); t0 = clock()
     preflight(root)
     man = pr.load_manifest(root, version)
     pl = plan(state, fetcher, hd)
     recd, missed = done_ids(root, state, hd, version)
     venues = set(pr.venues_of(man))
-    made, miss_new, waiting = [], [], 0
+    made, miss_new, waiting, commits, pushed = [], [], 0, [], None
+
+    def miss(rid, reason, at):
+        m = {'race_id': rid, 'version': version, 'reason': reason, 'at': at.isoformat()}
+        _jl_append(miss_path(state, hd), m); miss_new.append(m)
+
     for r in pl['races']:
         rid = r['race_id']
         if rid in recd or rid in missed or rid[:2] not in venues: continue
-        d = pr.parse_time(r['deadline'])
-        if t >= d - dt.timedelta(seconds=margin_s):
-            m = {'race_id': rid, 'version': version, 'reason': '締切に間に合わなかった(取得の時間帯に処理できなかった)', 'at': t.isoformat()}
-            _jl_append(miss_path(state, hd), m); miss_new.append(m); continue
-        if t < d - dt.timedelta(minutes=lead_min):
+        d = pr.parse_time(r['deadline']); cur = clock()
+        if cur >= d - dt.timedelta(seconds=margin_s):
+            miss(rid, '締切に間に合わなかった(取得の時間帯に処理できなかった)', cur); continue
+        if cur < d - dt.timedelta(minutes=lead_min):
             waiting += 1; continue
         try:
             card = r.get('card')
             if card is None and hasattr(fetcher, 'card'): card = fetcher.card(rid)
             b = fetcher.before(rid)
+            cur = clock()
+            if cur >= d - dt.timedelta(seconds=commit_buffer_s):
+                miss(rid, '取得が締切の直前までかかった(%d秒前を切った)' % commit_buffer_s, cur); continue
             snap = {'key': rid, 'captured_at': b['captured_at'], 'card': card, 'before': b.get('normalized'),
                     'raw': b.get('raw'), 'sources': b.get('sources')}
             rec, s = pr.make_record(snap, man, rid, r['deadline'], 'live', deadline_source=r.get('deadline_source'), code_root=root)
             pr.save(rec, s, root); made.append(rid)
         except Exception as e:  # 取れなかったら次の tick でもう一度(締切の margin 秒前までに取れなければ misses)
-            _jl_append(log_path(state), {'at': t.isoformat(), 'event': 'retry', 'race_id': rid, 'error': repr(e)[:300]})
-    commit = pr.commit(root) if made else None
-    pushed = None
-    if commit and push:
-        pushed = pr._git(root, 'push', '-q', 'origin', 'HEAD') is not None
-    _jl_append(log_path(state), {'at': t.isoformat(), 'event': 'tick', 'hd': hd, 'made': len(made), 'missed': len(miss_new),
-                                 'waiting': waiting, 'commit': commit, 'pushed': pushed})
-    return {'made': made, 'missed': miss_new, 'waiting': waiting, 'commit': commit, 'pushed': pushed}
+            _jl_append(log_path(state), {'at': clock().isoformat(), 'event': 'retry', 'race_id': rid, 'error': repr(e)[:300]})
+            continue
+        c = pr.commit(root)   # 1件ごとにすぐ。失敗は RecordError で止める(preflight を通っていれば起きない想定)
+        if c: commits.append(c)
+        if c and push:
+            ok = pr._git(root, 'push', '-q', 'origin', 'HEAD') is not None
+            pushed = ok if pushed is None else (pushed and ok)
+            if not ok: _jl_append(log_path(state), {'at': clock().isoformat(), 'event': 'push_failed', 'race_id': rid})
+    _jl_append(log_path(state), {'at': t0.isoformat(), 'end': clock().isoformat(), 'event': 'tick', 'hd': hd, 'made': len(made),
+                                 'missed': len(miss_new), 'waiting': waiting, 'commits': len(commits), 'pushed': pushed})
+    return {'made': made, 'missed': miss_new, 'waiting': waiting, 'commit': commits[-1] if commits else None,
+            'commits': len(commits), 'pushed': pushed}
 
 
 def sample(state, version_manifest, results, hd):
@@ -151,7 +166,7 @@ def main():
     ap.add_argument('cmd', choices=['plan', 'tick', 'loop', 'sample'])
     ap.add_argument('--root', default='.'); ap.add_argument('--state', required=True); ap.add_argument('--fetcher')
     ap.add_argument('--version'); ap.add_argument('--hd'); ap.add_argument('--results')
-    ap.add_argument('--lead-min', type=float, default=8.0); ap.add_argument('--margin-s', type=int, default=60)
+    ap.add_argument('--lead-min', type=float, default=8.0); ap.add_argument('--margin-s', type=int, default=90)
     ap.add_argument('--push', action='store_true')
     a = ap.parse_args()
     hd = a.hd or jst_today()
