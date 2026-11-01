@@ -287,11 +287,29 @@ def paths_for(race_id, version):
             'inputs/%s/%s/%s__%s.input.json' % (jcd, hd, race_id, version))
 
 
+_MODELS = {}
+
+
 def run_model(manifest, snapshot, root):
-    """版の設定の entry(predict(snapshot) を持つファイル)を読み込んで実行する"""
+    """版の設定の entry(predict(snapshot) を持つファイル)を読み込んで実行する。
+    entry のフォルダを import の探す場所に入れる(同じフォルダの別ファイルを import するモデルのため。2026-11-01 tolmena13-a)。
+    読み込んだモジュールは「版・entry の場所・code_files のハッシュ」ごとに使い回す(大きい係数を毎回読まないため。コードが変われば読み直す)"""
     import importlib.util
-    spec = importlib.util.spec_from_file_location('predrec_model_' + re.sub(r'\W', '_', manifest['version']), os.path.join(root, manifest['entry']))
-    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    path = os.path.abspath(os.path.join(root, manifest['entry']))
+    key = (manifest['version'], path, code_files_hash(manifest['code_files'], root))
+    mod = _MODELS.get(key)
+    if mod is None:
+        # モデルは必ずソースから読む(.pyc は同じ秒・同じ大きさの書き換えを見逃し、ハッシュを確かめたコードと違う中身を動かしうる)
+        if not getattr(sys, 'pycache_prefix', None): sys.pycache_prefix = tempfile.mkdtemp(prefix='predrec_nopyc_')
+        sys.dont_write_bytecode = True
+        d = os.path.dirname(path)
+        if d not in sys.path: sys.path.insert(0, d)
+        for name, m in list(sys.modules.items()):  # 同じフォルダの古い読み込みは捨てる(ファイルが変わった後の新しい版で古い中身を使わないため)
+            f = getattr(m, '__file__', None)
+            if f and os.path.dirname(os.path.abspath(f)) == d and not name.startswith('predrec_model_'): del sys.modules[name]
+        spec = importlib.util.spec_from_file_location('predrec_model_' + re.sub(r'\W', '_', manifest['version']), path)
+        mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+        _MODELS[key] = mod
     return mod.predict(roundtrip(snapshot))
 
 

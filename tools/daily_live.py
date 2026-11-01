@@ -126,6 +126,10 @@ def load_builder(root, manifest):
     path = manifest.get('snapshot_builder')
     if not path: return None
     if path not in manifest['code_files']: raise pr.RecordError('snapshot_builder は版の code_files に入れる: ' + path)
+    if not getattr(sys, 'pycache_prefix', None): sys.pycache_prefix = __import__('tempfile').mkdtemp(prefix='predrec_nopyc_')
+    sys.dont_write_bytecode = True   # predrec.run_model と同じく、ソースから読む
+    d = os.path.dirname(os.path.abspath(os.path.join(root, path)))
+    if d not in sys.path: sys.path.insert(0, d)   # 同じフォルダの別ファイルを import する builder のため
     spec = importlib.util.spec_from_file_location('snap_builder_' + manifest['version'].replace('-', '_').replace('.', '_'), os.path.join(root, path))
     m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
     return m.build
