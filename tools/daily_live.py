@@ -9,8 +9,11 @@
 状態フォルダ(plan_*.json・misses_*.jsonl・runlog.jsonl・sample_*.json)は公開リポジトリの外に置く。
 
 取得モジュール(会場の公式サイトの読み方。kyotei_mark1/venues24_20261031/fetch/ を包む)は次の2つを持つ:
-  racelist(hd) -> [{'race_id': 'JJ_YYYYMMDD_RR', 'deadline': 'YYYY-MM-DDTHH:MM:00+09:00', 'deadline_source': url, 'card': {...}}]
+  racelist(hd) -> [{'race_id': 'JJ_YYYYMMDD_RR', 'deadline': 'YYYY-MM-DDTHH:MM:00+09:00', 'deadline_source': url, 'card': {...} または省く}]
   before(race_id) -> {'captured_at': UTC の ISO 時刻, 'sources': [url...], 'raw': {...}, 'normalized': {...}}
+ 任意で card(race_id) -> {...}(出走表)。racelist が card を省いたレースは、tick で記録を作る直前に card() で取る
+ (2026-11-01 PC の試運転: 朝に全レースの出走表を取ると boatrace.jp が1回約10秒で plan に約32分かかり、終わる前に16レースの締切が過ぎた。
+  racelist は会場ごとに締切時刻の一覧だけを取り、出走表は tick で取る形を勧める)。
 決まり:
   - 締切の lead 分前から締切の margin 秒前までに、直前情報を取り、版のモデルで記録を作る。取れない・間に合わないレースは
     misses に理由つきで残し、後から予測を足さない(締切後は作らない。predrec も拒否する)。
@@ -108,8 +111,10 @@ def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=60, push
         if t < d - dt.timedelta(minutes=lead_min):
             waiting += 1; continue
         try:
+            card = r.get('card')
+            if card is None and hasattr(fetcher, 'card'): card = fetcher.card(rid)
             b = fetcher.before(rid)
-            snap = {'key': rid, 'captured_at': b['captured_at'], 'card': r.get('card'), 'before': b.get('normalized'),
+            snap = {'key': rid, 'captured_at': b['captured_at'], 'card': card, 'before': b.get('normalized'),
                     'raw': b.get('raw'), 'sources': b.get('sources')}
             rec, s = pr.make_record(snap, man, rid, r['deadline'], 'live', deadline_source=r.get('deadline_source'), code_root=root)
             pr.save(rec, s, root); made.append(rid)

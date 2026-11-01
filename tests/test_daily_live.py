@@ -4,6 +4,7 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, 'tools')); sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import predrec as P
 import daily_live as D
+from _fsutil import rmtree_force
 from test_predrec import Base, load, dump
 
 UTC = dt.timezone.utc
@@ -35,8 +36,25 @@ class TestDaily(Base):
         self.now = dt.datetime.now(UTC).replace(microsecond=0)
         self.hd = (self.now + P.JST).strftime('%Y%m%d')
 
+    def tearDown(self):
+        rmtree_force(self.state, ignore_errors=True)
+        super().tearDown()
+
     def dl(self, minutes):
         return (self.now + dt.timedelta(minutes=minutes) + P.JST).replace(tzinfo=dt.timezone(P.JST)).isoformat()
+
+    def test_card_fetched_at_tick(self):
+        class LazyCard(FakeFetcher):  # 朝は締切時刻だけ、出走表は記録の直前に取る
+            def racelist(self, hd):
+                return [{'race_id': rid, 'deadline': d, 'deadline_source': 'test'} for rid, d in self.deadlines.items()]
+            def card(self, rid):
+                self.calls.append('card:' + rid); return {'n': 2, 'race': rid}
+        f = LazyCard(self.hd, {'01_%s_01' % self.hd: self.dl(5), '13_%s_02' % self.hd: self.dl(60)})
+        r = D.tick(self.root, self.state, f, 't24', self.hd, t=self.now)
+        self.assertEqual(r['made'], ['01_%s_01' % self.hd])
+        self.assertEqual([c for c in f.calls if c.startswith('card:')], ['card:01_%s_01' % self.hd])  # 締切の近いレースだけ
+        inp = load(os.path.join(self.root, P.paths_for('01_%s_01' % self.hd, 't24')[1]))
+        self.assertEqual(inp['card'], {'n': 2, 'race': '01_%s_01' % self.hd})
 
     def test_tick_refuses_without_git_identity(self):
         self.git('config', '--unset', 'user.email')

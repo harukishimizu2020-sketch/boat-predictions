@@ -5,6 +5,8 @@ HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 import predrec as P
 import evaluate as E
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fsutil import rmtree_force
 
 OC = P.ORIGIN_CLASSES
 # 設計書5.5 / a5_common.py の SOFT と同じ値(テスト用。本番の表は labels/ の版付きファイル)
@@ -451,7 +453,7 @@ class TestEndToEnd(unittest.TestCase):
             subprocess.run(['git', '-C', self.root] + a, check=True, capture_output=True, env=e)
 
     def tearDown(self):
-        shutil.rmtree(self.root, ignore_errors=True)
+        rmtree_force(self.root, ignore_errors=True)
 
     def test_run(self):
         man = P.load_manifest(self.root, 'model-t')

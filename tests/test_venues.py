@@ -27,7 +27,7 @@ class TestVenues(Base):
         rec, sn = P.make_record(s, man, '01_20260910_03', DEADLINE, 'live', code_root=self.root)
         self.assertEqual((rec['race']['jcd'], rec['race']['hd'], rec['race']['rno']), ('01', '20260910', 3))
         rp = P.save(rec, sn, self.root)
-        self.assertIn(os.path.join('records', '01', '20260910'), rp)
+        self.assertIn('records/01/20260910/', rp)  # 記録の置き場所は OS によらず / 区切り(台帳と git の表記)
         self.assertTrue(rec['input']['path'].startswith('inputs/01/20260910/'))
         P.check_record(rec, man)
         with self.assertRaises(P.RecordError):  # 版の対象に無い会場

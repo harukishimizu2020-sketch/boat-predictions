@@ -4,6 +4,8 @@ from unittest import mock
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 import predrec as P
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fsutil import rmtree_force
 
 DEADLINE = '2099-01-01T10:52:00+09:00'
 GIT_ENV = dict(GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
@@ -33,7 +35,7 @@ class Base(unittest.TestCase):
         self.man = P.load_manifest(self.root, 'trial-v0')
 
     def tearDown(self):
-        shutil.rmtree(self.root, ignore_errors=True)
+        rmtree_force(self.root, ignore_errors=True)
 
     def git(self, *a, env=None):
         e = dict(os.environ, **GIT_ENV)
@@ -89,7 +91,7 @@ class TestMake(Base):
         self.assertEqual(r['model']['output_source'], 'file')
 
     def test_live_needs_git(self):
-        shutil.rmtree(os.path.join(self.root, '.git'))
+        rmtree_force(os.path.join(self.root, '.git'))
         with self.assertRaises(P.RecordError): self.make()
         self.make(mode='backtest')  # 試しなら git が無くても作れる
 
