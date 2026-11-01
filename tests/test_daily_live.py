@@ -68,6 +68,17 @@ class TestDaily(Base):
         self.assertEqual(r['made'], ['02_%s_01' % self.hd])
         self.assertEqual(P.verify(self.root, replay=True), [])
 
+    def test_retry_counts_as_waiting_then_close_day(self):
+        rid = '23_%s_12' % self.hd
+        f = FakeFetcher(self.hd, {rid: self.dl(5)}, fail={rid})
+        r = D.tick(self.root, self.state, f, 't24', self.hd, t=self.now)
+        self.assertEqual((r['made'], r['missed'], r['waiting']), ([], [], 1))   # 取り直しは待ちに数える(loop を終わらせない)
+        later = self.now + dt.timedelta(minutes=10)
+        self.assertEqual(D.close_day(self.root, self.state, 't24', self.hd, t=later)[0]['race_id'], rid)
+        self.assertEqual(D.close_day(self.root, self.state, 't24', self.hd, t=later), [])  # 2回目は増えない
+        r2 = D.tick(self.root, self.state, f, 't24', self.hd, t=later)
+        self.assertEqual((r2['made'], r2['missed'], r2['waiting']), ([], [], 0))
+
     def test_card_fetched_at_tick(self):
         class LazyCard(FakeFetcher):  # 朝は締切時刻だけ、出走表は記録の直前に取る
             def racelist(self, hd):

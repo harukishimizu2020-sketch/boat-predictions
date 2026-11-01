@@ -4,7 +4,8 @@
 使い方(PC で、公開リポジトリ prediction_record の中から):
   python tools/daily_live.py plan   --state <状態フォルダ> --fetcher <取得モジュール.py> [--hd YYYYMMDD]
   python tools/daily_live.py tick   --state ... --fetcher ... --version <版> [--lead-min 8] [--push]
-  python tools/daily_live.py loop   --state ... --fetcher ... --version <版> [--push]   (plan のあと、全レースが済むまで1分ごとに tick)
+  python tools/daily_live.py loop   --state ... --fetcher ... --version <版> [--push]   (plan のあと、全レースが済むまで1分ごとに tick、最後に close)
+  python tools/daily_live.py close  --state ... --version <版> [--hd YYYYMMDD]   (記録にも漏れにも無いまま締切を過ぎたレースを漏れに入れる)
   python tools/daily_live.py sample --state ... --version <版> --results <公式結果.jsonl> --hd YYYYMMDD
 状態フォルダ(plan_*.json・misses_*.jsonl・runlog.jsonl・sample_*.json)は公開リポジトリの外に置く。
 
@@ -130,6 +131,8 @@ def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=90, push
             rec, s = pr.make_record(snap, man, rid, r['deadline'], 'live', deadline_source=r.get('deadline_source'), code_root=root)
             pr.save(rec, s, root); made.append(rid)
         except Exception as e:  # 取れなかったら次の tick でもう一度(締切の margin 秒前までに取れなければ misses)
+            # 取り直しのレースは「待ち」に数える(数えないと loop が終わり、記録にも漏れにも残らないレースが出る。2026-11-01 下関12R)
+            waiting += 1
             _jl_append(log_path(state), {'at': clock().isoformat(), 'event': 'retry', 'race_id': rid, 'error': repr(e)[:300]})
             continue
         c = pr.commit(root)   # 1件ごとにすぐ。失敗は RecordError で止める(preflight を通っていれば起きない想定)
@@ -142,6 +145,23 @@ def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=90, push
                                  'missed': len(miss_new), 'waiting': waiting, 'commits': len(commits), 'pushed': pushed})
     return {'made': made, 'missed': miss_new, 'waiting': waiting, 'commit': commits[-1] if commits else None,
             'commits': len(commits), 'pushed': pushed}
+
+
+def close_day(root, state, version, hd, t=None):
+    """その日の終わりに、記録にも漏れにも無いまま締切を過ぎたレースを漏れに入れる(どのレースも必ずどちらかに残す)"""
+    t = t or now()
+    man = pr.load_manifest(root, version)
+    pl = pr._load(plan_path(state, hd)) if os.path.exists(plan_path(state, hd)) else {'races': []}
+    recd, missed = done_ids(root, state, hd, version)
+    venues = set(pr.venues_of(man)); out = []
+    for r in pl['races']:
+        rid = r['race_id']
+        if rid in recd or rid in missed or rid[:2] not in venues: continue
+        if t >= pr.parse_time(r['deadline']):
+            m = {'race_id': rid, 'version': version, 'reason': '処理されないまま締切を過ぎた(取得の取り直し中・処理の停止など)', 'at': t.isoformat()}
+            _jl_append(miss_path(state, hd), m); out.append(m)
+    _jl_append(log_path(state), {'at': t.isoformat(), 'event': 'close_day', 'hd': hd, 'missed': len(out)})
+    return out
 
 
 def sample(state, version_manifest, results, hd):
@@ -163,7 +183,7 @@ def sample(state, version_manifest, results, hd):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('cmd', choices=['plan', 'tick', 'loop', 'sample'])
+    ap.add_argument('cmd', choices=['plan', 'tick', 'loop', 'close', 'sample'])
     ap.add_argument('--root', default='.'); ap.add_argument('--state', required=True); ap.add_argument('--fetcher')
     ap.add_argument('--version'); ap.add_argument('--hd'); ap.add_argument('--results')
     ap.add_argument('--lead-min', type=float, default=8.0); ap.add_argument('--margin-s', type=int, default=90)
@@ -173,13 +193,17 @@ def main():
     if a.cmd == 'sample':
         print(json.dumps(sample(a.state, pr.load_manifest(a.root, a.version), E.load_results(a.results), hd)['n']))
         return
+    if a.cmd == 'close':
+        print(len(close_day(a.root, a.state, a.version, hd))); return
     f = load_fetcher(a.fetcher)
     if a.cmd == 'plan':
         print(len(plan(a.state, f, hd)['races'])); return
     while True:
         r = tick(a.root, a.state, f, a.version, hd, a.lead_min, a.margin_s, a.push)
         print(json.dumps({k: (len(v) if isinstance(v, list) else v) for k, v in r.items()}, ensure_ascii=False), flush=True)
-        if a.cmd == 'tick' or r['waiting'] == 0 and not r['made']: break
+        if a.cmd == 'tick': break
+        if r['waiting'] == 0 and not r['made']:
+            close_day(a.root, a.state, a.version, hd); break   # loop の終わりに、残ったレースを漏れにする
         time.sleep(60)
 
 
