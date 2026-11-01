@@ -40,7 +40,7 @@ class Base(unittest.TestCase):
     def git(self, *a, env=None):
         e = dict(os.environ, **GIT_ENV)
         if env: e.update(env)
-        return subprocess.run(['git', '-C', self.root] + list(a), check=True, capture_output=True, env=e, text=True).stdout
+        return subprocess.run(['git', '-C', self.root] + list(a), check=True, capture_output=True, env=e, text=True, encoding='utf-8').stdout
 
     def make(self, race='24_20260910_01', mode='live', deadline=DEADLINE, model_output=None, s=None):
         return P.make_record(s or snap(), self.man, race, deadline, mode, code_root=self.root, model_output=model_output)
