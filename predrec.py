@@ -15,13 +15,17 @@
   - モデルの predict(snapshot) は、同じ入力なら必ず同じ出力を返すこと(verify が再実行して確かめる)。
   - ハッシュの正規形は Python の json.dumps(sort_keys・区切り空白なし・ensure_ascii=False・UTF-8)。他の言語で確かめるときは同じ書き方にそろえる。
 """
-import argparse, datetime as dt, hashlib, json, os, re, subprocess, sys, tempfile
+import argparse, datetime as dt, hashlib, importlib, importlib.util, json, os, re, subprocess, sys, tempfile
 
 FORMAT = 'predrec-1'
 ORIGIN_CLASSES = ['2まくり', '3まくり', '4まくり', '5まくり', '6まくり', '3まくり差し', 'その他']  # GATE 第2章の起点7分類(この順で固定)
 MOVES = ['差し', 'まくり', 'まくり差し']
+# 13類(pmap13-v1、的中の主。2026-10-16 決定)。記録には任意で載せる(2026-10-31 ユーザー決定 Q5: 起点7分類は段階ゲートのため残し、13類を足す)
+CLASS13 = ['2差しが制す', '2攻め・1残す', '2攻め成立', '3が制す', '3攻め・1残す', '3攻め成立', '4差しが制す', '4攻め・1残す', '4攻め成立',
+           '5が制す', '5攻め・1残す', '6攻め・1残す', 'その他']
 B1_ATTACK = ['なし', '差し', 'まくり', 'まくり差し']
-RACE_ID = re.compile(r'^24_(\d{8})_(\d{2})$')  # 大村(jcd=24)だけ。戸田(02)などは拒否する
+RACE_ID = re.compile(r'^(0[1-9]|1\d|2[0-4])_(\d{8})_(\d{2})$')  # 24場(jcd 01〜24)。どの会場を記録できるかは版の venues で決める
+DEFAULT_VENUES = ['24']  # venues を書いていない版(2026-10-31 より前に作った版)は大村だけ
 JST = dt.timedelta(hours=9)
 NDIGITS = 6        # 確率は小数6桁に丸めてから記録する(同率の判定を安定させるため)
 PROB_TOL = 1e-5
@@ -171,14 +175,54 @@ def check_manifest(manifest):
     if manifest['origin_classes'] != ORIGIN_CLASSES: raise RecordError('版の起点の分類・並び順が predrec と違います')
     if manifest['bands']['lo'] > manifest['bands']['hi']: raise RecordError('版の帯が lo > hi です')
     if manifest['entry'] not in manifest['code_files']: raise RecordError('版の entry が code_files に入っていません')
+    if manifest.get('confidence_def') is not None and manifest['confidence_def'] not in CONF_DEFS:
+        raise RecordError('版の confidence_def が predrec に無い定義です: %s' % manifest['confidence_def'])
+    vs = manifest.get('venues')
+    if vs is not None and (len(set(vs)) != len(vs) or any(not re.match(r'^(0[1-9]|1\d|2[0-4])$', v) for v in vs)):
+        raise RecordError('版の venues は 01〜24 の会場番号(重複なし)')
+
+
+# 13類の自信度(0〜1)。版の confidence_def で定義の版を選ぶ。値は predrec が記録の class13 から計算する(モデルや人が手で書かない)
+# conf-v0(2026-10-31、予測精度スレッドで確定。較正し直しは確認期間で良くならず入れない): 主 = その他を除く13類の上位3つの確率の合計、副 = その他を除く最大確率(本命1つ)。
+# 同率は CLASS13 の並び順で先のもの。的中(ソフト)は同じ3つ・1つの正解確率の合計(evaluate.conf_hits)。
+def _conf_v0(p):
+    idx = sorted(range(len(CLASS13) - 1), key=lambda i: (-p[i], i))
+    return {'main': round(sum(p[i] for i in idx[:3]), 6), 'sub': round(p[idx[0]], 6), 'top3': [CLASS13[i] for i in idx[:3]]}
+
+
+CONF_DEFS = {'conf-v0': _conf_v0}
+
+
+def class13_conf(def_name, p):
+    if def_name not in CONF_DEFS: raise RecordError('自信度の定義 %s は predrec に無い(%s)' % (def_name, ','.join(CONF_DEFS)))
+    return dict(CONF_DEFS[def_name](p), **{'def': def_name})
+
+
+def venues_of(manifest):
+    """版が記録してよい会場(対象外の会場の記録は作らせない。両張り・会場の後出しを防ぐため、版の固定時に決める)"""
+    return list(manifest.get('venues') or DEFAULT_VENUES)
+
+
+def publishes_inputs(manifest):
+    """入力の写し(inputs/)を公開リポジトリに載せる版か。False の版は記録と入力のハッシュだけ公開し、写しは手元に残す
+    (会場サイトの規約に「許可なく複製・配布しない」趣旨があるため、2026-10-31 の案。省くと今までどおり載せる)"""
+    return manifest.get('publish_inputs', True) is not False
+
+
+def parse_race_id(race_id, manifest=None):
+    m = RACE_ID.match(race_id)
+    if not m: raise RecordError('レースIDの形が違います(JJ_YYYYMMDD_RR、JJ=01〜24): ' + race_id)
+    jcd, hd, rno = m.group(1), m.group(2), int(m.group(3))
+    if manifest is not None and jcd not in venues_of(manifest):
+        raise RecordError('版 %s の対象会場(%s)に入っていない会場です: %s' % (manifest['version'], ','.join(venues_of(manifest)), race_id))
+    return jcd, hd, rno
 
 
 def check_record(rec, manifest):
     """スキーマで書けない決まりを確かめる"""
     check_schema(rec, 'prediction')
-    m = RACE_ID.match(rec['race']['race_id'])
-    if not m: raise RecordError('大村(24_YYYYMMDD_RR)以外のレースIDです')
-    if rec['race']['hd'] != m.group(1) or rec['race']['rno'] != int(m.group(2)): raise RecordError('race_id と hd/rno が食い違っています')
+    jcd, hd, rno = parse_race_id(rec['race']['race_id'], manifest)
+    if rec['race']['jcd'] != jcd or rec['race']['hd'] != hd or rec['race']['rno'] != rno: raise RecordError('race_id と jcd/hd/rno が食い違っています')
     if rec['model']['version'] != manifest['version']: raise RecordError('版が違います')
     if rec['model']['manifest_hash'] != manifest_hash(manifest): raise RecordError('版の設定ファイルが記録時と違います')
     if rec['model']['code_files_hash'] != manifest['code_files_hash']: raise RecordError('記録のコードのハッシュが版の設定と違います')
@@ -207,6 +251,15 @@ def check_record(rec, manifest):
             if b['success_p'] is not None: _probs('%d号艇の成功' % b['boat'], b['success_p'], MOVES, allow_null=True)
             if b['boat'] == 2 and b['move_p']['まくり差し'] > 0: raise RecordError('2号艇のまくり差しは起きない(内側が1号艇だけ)')
     if rec.get('boat1') is not None: _probs('1号艇の攻められ方', rec['boat1']['attacked_p'], B1_ATTACK)
+    if 'class13' in rec:
+        if rec['class13']['classes'] != CLASS13: raise RecordError('13類の分類・並び順が違います')
+        if abs(sum(rec['class13']['p']) - 1) > PROB_TOL: raise RecordError('13類の確率の合計が1ではありません')
+        cd = manifest.get('confidence_def')
+        if cd is not None and rec['class13'].get('conf') != class13_conf(cd, rec['class13']['p']):
+            raise RecordError('13類の自信度が版の定義(%s)で計算した値と違う' % cd)
+        if cd is None and 'conf' in rec['class13']: raise RecordError('版に confidence_def が無いのに自信度が書いてある')
+    elif manifest.get('confidence_def') is not None:
+        raise RecordError('版に confidence_def があるのに、モデルが13類の確率を出していない')
     if rec['mode'] == 'live':
         d, cr, cap = rec['race']['deadline'], rec['created_at'], rec['input']['captured_at']
         if d is None: raise RecordError('本番の記録には締切時刻が必要です')
@@ -229,17 +282,61 @@ def load_manifest(root, version):
 
 
 def paths_for(race_id, version):
-    hd = RACE_ID.match(race_id).group(1)
-    return ('records/24/%s/%s__%s.json' % (hd, race_id, version),
-            'inputs/24/%s/%s__%s.input.json' % (hd, race_id, version))
+    jcd, hd, _ = parse_race_id(race_id)
+    return ('records/%s/%s/%s__%s.json' % (jcd, hd, race_id, version),
+            'inputs/%s/%s/%s__%s.input.json' % (jcd, hd, race_id, version))
+
+
+_MODELS = {}
+_SCOPE_MODS = {}
+
+
+class model_scope:
+    """版のフォルダの別ファイル(tm13_features など)を、その版の読み込み・実行の間だけ使う。
+    2026-11-02: 同じ名前のファイルを持つ版をフォルダを分けて並べたとき(models/ の p1101 と models/tm13_a_r1102/)、
+    sys.modules の名前の使い回しで別の版のファイルが動くのを防ぐ。関数の中で後から import するファイル(tm13_program)も同じ。
+    key ごとに、そのフォルダから読んだモジュールを覚えておき、入るたびに sys.modules と sys.path の先頭を差し替え、出るときに元に戻す"""
+    def __init__(self, key, d):
+        self.key, self.d = key, os.path.abspath(d)
+
+    def __enter__(self):
+        if not getattr(sys, 'pycache_prefix', None): sys.pycache_prefix = tempfile.mkdtemp(prefix='predrec_nopyc_')
+        sys.dont_write_bytecode = True   # モデルは必ずソースから読む(.pyc は同じ秒・同じ大きさの書き換えを見逃す)
+        own = _SCOPE_MODS.setdefault(self.key, {})
+        self.names = {f[:-3] for f in os.listdir(self.d) if f.endswith('.py')}
+        self.saved = {n: sys.modules.get(n) for n in self.names}
+        for n in self.names:
+            if n in own: sys.modules[n] = own[n]
+            else: sys.modules.pop(n, None)
+        self.saved_path = list(sys.path)
+        sys.path[:] = [self.d] + [x for x in sys.path if os.path.abspath(x or '.') != self.d]
+        importlib.invalidate_caches()
+        return self
+
+    def __exit__(self, *exc):
+        own = _SCOPE_MODS[self.key]
+        for n in self.names:
+            m = sys.modules.get(n); f = getattr(m, '__file__', None)
+            if f and os.path.dirname(os.path.abspath(f)) == self.d: own[n] = m
+            if self.saved[n] is None: sys.modules.pop(n, None)
+            else: sys.modules[n] = self.saved[n]
+        sys.path[:] = self.saved_path
+        return False
 
 
 def run_model(manifest, snapshot, root):
-    """版の設定の entry(predict(snapshot) を持つファイル)を読み込んで実行する"""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location('predrec_model_' + re.sub(r'\W', '_', manifest['version']), os.path.join(root, manifest['entry']))
-    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-    return mod.predict(roundtrip(snapshot))
+    """版の設定の entry(predict(snapshot) を持つファイル)を読み込んで実行する。
+    entry のフォルダの別ファイルを import するモデルのため、読み込みと実行は model_scope の中で行う(2026-11-01 tolmena13-a、11-02 版を並べる対応)。
+    読み込んだモジュールは「版・entry の場所・code_files のハッシュ」ごとに使い回す(大きい係数を毎回読まないため。コードが変われば読み直す)"""
+    path = os.path.abspath(os.path.join(root, manifest['entry']))
+    key = (manifest['version'], path, code_files_hash(manifest['code_files'], root))
+    with model_scope(key, os.path.dirname(path)):
+        mod = _MODELS.get(key)
+        if mod is None:
+            spec = importlib.util.spec_from_file_location('predrec_model_' + re.sub(r'\W', '_', manifest['version']), path)
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            _MODELS[key] = mod
+        return mod.predict(roundtrip(snapshot))
 
 
 def _r(x):
@@ -268,6 +365,8 @@ def normalize_output(mo):
                 'attacked_p': {k: _r(mo['boat1']['attacked_p'][k]) for k in B1_ATTACK}, 'escape_p': _r(mo['boat1'].get('escape_p'))},
             'rationale': mo.get('rationale', []),
         }
+        if mo.get('class13') is not None:  # 出さないモデル(今までの版)は記録に項目ごと載せない(古い記録のハッシュを変えないため)
+            out['class13'] = [_r(mo['class13'][c]) for c in CLASS13]
     except (KeyError, TypeError, ValueError) as e:
         raise RecordError('モデルの出力の形が違います: %r' % e)
     return out
@@ -292,8 +391,7 @@ def code_commit(manifest, root):
 def make_record(snapshot, manifest, race_id, deadline, mode='live', deadline_source=None, code_root=HERE, model_output=None):
     """記録を組み立てる。model_output を省くと版のモデルを実行する(本番は必ずこちら)。
     派生項目(主シナリオ・自信度・ハッシュ・作成時刻)はここで計算し、呼び出し側からは渡せない"""
-    m = RACE_ID.match(race_id)
-    if not m: raise RecordError('大村(24_YYYYMMDD_RR)以外のレースIDです: ' + race_id)
+    jcd, hd, rno = parse_race_id(race_id, manifest)
     if mode not in ('live', 'backtest'): raise RecordError('mode は live か backtest')
     if mode == 'live' and model_output is not None: raise RecordError('本番の記録は版のモデルを実行して作ります(--model-output は使えない)')
     snapshot = roundtrip(snapshot)
@@ -305,7 +403,7 @@ def make_record(snapshot, manifest, race_id, deadline, mode='live', deadline_sou
     rec = {
         'format': FORMAT,
         'mode': mode,
-        'race': {'race_id': race_id, 'jcd': '24', 'hd': m.group(1), 'rno': int(m.group(2)),
+        'race': {'race_id': race_id, 'jcd': jcd, 'hd': hd, 'rno': rno,
                  'deadline': deadline, 'deadline_source': deadline_source},
         'created_at': now_utc(),
         'model': {'version': manifest['version'], 'manifest_hash': manifest_hash(manifest), 'code_files_hash': ch,
@@ -321,6 +419,9 @@ def make_record(snapshot, manifest, race_id, deadline, mode='live', deadline_sou
         'rationale': mo['rationale'],
         'integrity': {'record_hash': None},
     }
+    if 'class13' in mo:
+        rec['class13'] = {'classes': CLASS13, 'p': mo['class13']}
+        if manifest.get('confidence_def') is not None: rec['class13']['conf'] = class13_conf(manifest['confidence_def'], mo['class13'])
     if mode == 'live' and deadline and dt.datetime.now(dt.timezone.utc) >= parse_time(deadline): raise RecordError('締切を過ぎています')
     rec['integrity']['record_hash'] = record_hash(rec)
     check_record(rec, manifest)
@@ -381,9 +482,10 @@ def _replay_problem(rec, snap, manifest, root):
         return 'モデルのコードが版の固定時と変わっていて、実行し直して確かめられない'
     mo = normalize_output(run_model(manifest, snap, root))
     got = {'premise': mo['premise'], 'origin': mo['origin'], 'scenario_id': mo['scenario_id'],
-           'boats': mo['boats'], 'boat1': mo['boat1'], 'rationale': mo['rationale']}
+           'boats': mo['boats'], 'boat1': mo['boat1'], 'rationale': mo['rationale'], 'class13': mo.get('class13')}
     want = {'premise': rec['premise'], 'origin': rec['origin']['p'], 'scenario_id': rec['main_scenario']['scenario_id'],
-            'boats': rec['boats'], 'boat1': rec['boat1'], 'rationale': rec['rationale']}
+            'boats': rec['boats'], 'boat1': rec['boat1'], 'rationale': rec['rationale'],
+            'class13': rec['class13']['p'] if 'class13' in rec else None}
     return None if canon(got) == canon(want) else 'モデルを実行し直した結果と記録の予測が違う'
 
 
@@ -415,6 +517,7 @@ def verify(root, replay=True):
         return ['台帳が JSON として読めない: %s' % e]
     prev, seen, manifests = None, set(), {}
     in_git = _git(root, 'rev-parse', '--is-inside-work-tree') is not None
+    tracked_inputs = set((_git(root, 'ls-files', '--', 'inputs') or '').split()) if in_git else set()
     for i, line in enumerate(led):
         tag = '台帳%d行目(%s)' % (i + 1, line.get('race_id'))
         if line.get('seq') != i + 1: probs.append(tag + ': 連番が飛んでいる')
@@ -430,8 +533,16 @@ def verify(root, replay=True):
             if v not in manifests: manifests[v] = load_manifest(root, v)
             check_record(rec, manifests[v])
             if rec['integrity']['record_hash'] != line['record_hash']: probs.append(tag + ': 台帳と記録のハッシュが違う')
-            snap = _load(os.path.join(root, rec['input']['path']))
-            if input_hash(snap) != rec['input']['hash']: probs.append(tag + ': 入力ファイルが記録時と違う')
+            ipath = os.path.join(root, rec['input']['path'])
+            if not publishes_inputs(manifests[v]) and rec['input']['path'] in tracked_inputs:
+                probs.append(tag + ': 入力を公開しない版なのに、入力の写しが git に載っている(push すると公開される)')
+            if not os.path.exists(ipath) and not publishes_inputs(manifests[v]):
+                snap = None  # 入力を公開しない版で、手元に写しが無い(公開リポジトリを複製した人の側)。再現の確認は持ち主の手元で行う
+            else:
+                snap = _load(ipath)
+            if snap is None:
+                pass
+            elif input_hash(snap) != rec['input']['hash']: probs.append(tag + ': 入力ファイルが記録時と違う')
             elif replay and rec['model']['output_source'] == 'entry':
                 pr = _replay_problem(rec, snap, manifests[v], root)
                 if pr: probs.append(tag + ': ' + pr)
@@ -457,7 +568,15 @@ def verify(root, replay=True):
 
 def commit(root):
     if _git(root, 'rev-parse', '--is-inside-work-tree') is None: raise RecordError('git のリポジトリではありません: ' + root)
-    _git(root, 'add', '--', 'records', 'inputs', 'ledger.jsonl')
+    _git(root, 'add', '--', 'records', 'ledger.jsonl')
+    # 入力の写しは、公開する版の分だけ載せる(publish_inputs: false の版は手元に残す)
+    mans, pub = {}, []
+    for line in _read_ledger(root):
+        v = line['version']
+        if v not in mans: mans[v] = load_manifest(root, v)
+        if publishes_inputs(mans[v]): pub.append(paths_for(line['race_id'], v)[1])
+    for i in range(0, len(pub), 200):
+        _git(root, 'add', '--', *pub[i:i + 200])
     st = _git(root, 'diff', '--cached', '--name-only')
     if not st or not st.strip(): return None
     n = sum(1 for x in st.split() if x.startswith('records/'))

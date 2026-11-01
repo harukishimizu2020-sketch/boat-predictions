@@ -22,7 +22,7 @@
     },
     "race_id": {
       "type": "string",
-      "pattern": "^24_\\d{8}_\\d{2}$"
+      "pattern": "^(0[1-9]|1\\d|2[0-4])_\\d{8}_\\d{2}$"
     },
     "version": {
       "type": "string"

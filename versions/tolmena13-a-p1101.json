@@ -1,0 +1,88 @@
+{
+ "version": "tolmena13-a-p1101",
+ "purpose": "24場の毎日の締切前記録の本モデル(予測精度スレッドの tolmena13-a)。baseline24-v0 と同じ入力で並べて記録する",
+ "model": "2段+2着: 1着×決まり手(17類)と2着を勾配ブースティング(600本・学習率0.02・葉15)、学習側の展開の割合の表を掛けて27類→13類。起点7分類と2〜6号艇の動きも同じ混ぜ方。特徴438列(出走表・直前情報・オリジナル展示・気象・公式結果の履歴、判定の履歴は使わない)",
+ "frozen_at": "2026-11-01T18:32:13+00:00",
+ "built_from": {
+  "data": "予測精度スレッド /mnt/project-files/accuracy_20261031/model_pkg/(train_a.py、係数 tm13_a_params.json.gz sha256 54d282cec60a8e2e11f5865876f0647871f0dff3c9a20003fe297692dfb640f9)",
+  "period": "学習は 2026-08-31 以前(F-4)。判定し直しの途中のラベル",
+  "labels": "13類 pmap13-v1、展開の割合の表は判定の対象の20会場だけ"
+ },
+ "eval_from": null,
+ "origin_classes": [
+  "2まくり",
+  "3まくり",
+  "4まくり",
+  "5まくり",
+  "6まくり",
+  "3まくり差し",
+  "その他"
+ ],
+ "bands": {
+  "lo": 0.0,
+  "hi": 1.01
+ },
+ "bands_method": "起点7分類の帯は使わない(自信度は13類の conf-v0)。全レース○",
+ "success_definition": null,
+ "escape_definition": null,
+ "soft_label_table": "labels/soft-v2.json",
+ "entry": "models/tm13_model.py",
+ "code_files": [
+  "models/tm13_model.py",
+  "models/tm13_snap.py",
+  "models/tm13_adapt.py",
+  "models/tm13_features.py",
+  "models/tm13_trees.py",
+  "models/tm13_a_params.json.gz"
+ ],
+ "snapshot_builder": "models/tm13_snap.py",
+ "venues": [
+  "01",
+  "02",
+  "03",
+  "04",
+  "05",
+  "06",
+  "07",
+  "08",
+  "09",
+  "10",
+  "11",
+  "12",
+  "13",
+  "14",
+  "15",
+  "16",
+  "17",
+  "18",
+  "19",
+  "20",
+  "21",
+  "22",
+  "23",
+  "24"
+ ],
+ "publish_inputs": false,
+ "sample_rule": {
+  "seed": "baseline24-v0-sample",
+  "rate": 0.17,
+  "always": [
+   "24"
+  ]
+ },
+ "confidence_def": "conf-v0",
+ "notes": [
+  "判定し直しの完了後に作り直す版は別の名前にする(この版は変えない)",
+  "江戸川(03)・桐生(01)・丸亀(15)・びわこ(11)は判定の対象外の会場で、展開の割合の表に入っておらず成績の確認も無い。記録はするが、採点の集計では「未検証の会場」として分ける",
+  "採点の標本の規則は baseline24-v0 と同じ(同じレースで比べるため)",
+  "snapshot_builder(tm13_snap.build)は ctx['results'](その日より前・直近2年の公式結果、daily_live の results_store から)で履歴を足す",
+  "係数の場所は環境変数で差し替えない(repo のコピーで外した)"
+ ],
+ "code_files_hash": "sha256:143ab19a284e96b15169e731b623fc7f18a2042b8d6594729f61aef80491e83a",
+ "unverified_venues": [
+  "01",
+  "03",
+  "11",
+  "15"
+ ]
+}

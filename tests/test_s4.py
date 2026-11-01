@@ -6,6 +6,8 @@ import copy, importlib.util, json, os, shutil, subprocess, sys, tempfile, unitte
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, 'tools'))
 import predrec as P
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fsutil import rmtree_force
 import build_s4 as S
 
 OC = P.ORIGIN_CLASSES; MOVES = P.MOVES
@@ -167,7 +169,7 @@ class TestRecordRoundtrip(unittest.TestCase):
             subprocess.run(['git', '-C', self.root] + a, check=True, capture_output=True, env=e)
 
     def tearDown(self):
-        shutil.rmtree(self.root, ignore_errors=True)
+        rmtree_force(self.root, ignore_errors=True)
 
     def test_make_and_verify(self):
         man = P.load_manifest(self.root, 's4-v1')

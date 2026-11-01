@@ -139,3 +139,11 @@ python -m unittest discover -s tests   # 確認用テスト
 手動判定40レースの後の大村専用の表を `labels/soft-v2.json` にした(作成 `tools/build_v2.py`。soft-v1 は残す)。評価器 `evaluate.soft_move` は、表に確信度「高」の行があればそれを使うように変えた(soft-v1 には「高」の行が無いので結果は変わらない)。soft-v2 で作り直した基準モデルは `baseline-v2`。
 S4 本モデル `s4-v1`(`models/s4_v1.py`・`s4_v1_params.json`、作成 `tools/build_s4.py`、試しの記録 `tools/backtest_s4.py`)の設計は `S4_DESIGN.md`、結果は `S4_REPORT.md`。段階2→3の合格条件の計算し直しは、共有フォルダの `gate_v2/GATE_stage2to3_v2_20261008.md`。
 2026-10-08 ユーザー決定: 段階2→3の判定の採点は soft-v2、比べる基準は baseline-v2(本番の記録を始める前に版を固定し、途中で変えない)。
+
+## 12. 24場への対応と13類の自信度(2026-10-31、下書き)
+- 版の設定に足せる項目(どれも省くと今までどおり): `venues`(記録してよい会場、省くと大村だけ)、`publish_inputs`(false なら入力の写しを公開せずハッシュだけ)、`sample_rule`(採点の標本の種・率・必ず入れる会場)、`confidence_def`(13類の自信度の定義の版)。
+- 13類の自信度 `class13.conf`(0〜1): predrec がモデルの13類の確率から計算する(モデルや人が値を書かない。違えば check_record が拒否)。`conf-v0` = 主 `main`: その他を除く上位3つの確率の合計、副 `sub`: その他を除く最大確率(本命1つ)。`top3` に上位3つの名前を残す。定義を変えるときは新しい名前(conf-v1 など)を足し、新しい版で使う。
+- 較正表: `python evaluate.py conf --version <版> --truth13 <正解.jsonl>`(1行 `{"race_id", "p": {13類: 確率}}`)。0.1刻みの帯(30件未満は隣とまとめる)ごとに 件数・平均自信度・ソフト的中率・95%区間、ECE。全体と会場別。
+- 毎日の締切前記録: `tools/daily_live.py`(plan / tick / loop / sample)。動かす前に git の名前・メールを確かめる。毎日の自動運用はまだ始めていない。
+- 本モデルの版(2026-11-02): `tolmena13-a-r1102`(主、判定し直し完了後の係数、`models/tm13_a_r1102/`)と `tolmena13-ai-r1102`(番組表つき、`models/tm13_ai_r1102/`、ctx に `program_dir` が要る)。どちらも係数は `tm13_a_params.json.gz` の名前で各フォルダに入れた。r1102 の A は p1101(`models/`)と木・展開の表が同じで出力も同じ(判定し直しの残りは学習期間の後だった)。p1101 は本番で記録していない。
+- 同じ名前のファイルを持つ版をフォルダを分けて並べられる: `predrec.model_scope` が版ごとにそのフォルダのモジュールを読み分ける(関数の中で後から import するファイルも)。snapshot_builder も同じ(`daily_live.load_builder`、読み込みは版とコードのハッシュごとに使い回す)。

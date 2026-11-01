@@ -433,6 +433,77 @@ def gate(elig):
 
 
 # ---------- 読み込みと実行 ----------
+# ---------- 13類の自信度の較正(2026-10-31、予測精度スレッドの暫定の形) ----------
+CONF_EDGES = [i / 10 for i in range(11)]
+
+
+def conf_hits(rec, truth13):
+    """記録の自信度(class13.conf)と、ソフト正解 truth13({13類: 確率})での的中(main=上位3つの正解確率の合計、sub=本命1つの正解確率)。
+    自信度の無い記録は None"""
+    c = (rec.get('class13') or {}).get('conf')
+    if c is None: return None
+    s = sum(float(v) for v in truth13.values())
+    if not s > 0: raise EvalError('13類の正解の確率の合計が0: ' + rec['race']['race_id'])
+    t = {k: float(v) / s for k, v in truth13.items()}
+    bad = [k for k in t if k not in pr.CLASS13]
+    if bad: raise EvalError('13類に無い分類が正解にある: %s' % bad)
+    return {'race_id': rec['race']['race_id'], 'jcd': rec['race']['jcd'], 'def': c['def'],
+            'main': c['main'], 'main_hit': sum(t.get(k, 0.0) for k in c['top3']),
+            'sub': c['sub'], 'sub_hit': t.get(c['top3'][0], 0.0)}
+
+
+def calibration(conf, hit, edges=CONF_EDGES, min_n=30):
+    """0.1刻みの帯ごとの 件数・平均自信度・ソフト的中率・95%区間(正規近似、ddof=1)。件数 min_n 未満の帯は次の帯とまとめ、
+    最後に残った分は1つ前にまとめる(予測精度スレッドの conf.reliability と同じ)。ECE は件数で重みをつけた |自信度−的中| の平均"""
+    nb = len(edges) - 1
+    def band(x):
+        for j in range(1, nb):
+            if x < edges[j]: return j - 1
+        return nb - 1
+    b = [band(x) for x in conf]
+    groups, cur = [], []
+    for j in range(nb):
+        cur.append(j)
+        if sum(1 for x in b if x in cur) >= min_n: groups.append(cur); cur = []
+    if cur:
+        if groups: groups[-1] += cur
+        else: groups.append(cur)
+    rows = []
+    for g in groups:
+        ix = [i for i, x in enumerate(b) if x in g]
+        if not ix: continue
+        h = [hit[i] for i in ix]; c = [conf[i] for i in ix]; k = len(ix); mu, mc = mean(h), mean(c)
+        se = sd(h) / math.sqrt(k) if k > 1 else float('nan')
+        rows.append({'lo': edges[g[0]], 'hi': edges[g[-1] + 1], 'n': k, 'conf': mc, 'hit': mu,
+                     'ci_lo': mu - 1.96 * se, 'ci_hi': mu + 1.96 * se, 'inside': bool(mu - 1.96 * se <= mc <= mu + 1.96 * se)})
+    n = len(conf)
+    return {'n': n, 'mean_conf': mean(conf) if n else None, 'mean_hit': mean(hit) if n else None,
+            'ece': sum(r['n'] * abs(r['conf'] - r['hit']) for r in rows) / n if n else None, 'bands': rows}
+
+
+def conf_report(root, version, truth13_path, by_venue=True):
+    """版の記録すべてについて、自信度の主・副の較正表(全体と会場別)。truth13_path は1行1レースの {"race_id", "p": {13類: 確率}}"""
+    truth = {}
+    with open(truth13_path, encoding='utf-8') as f:
+        for l in f:
+            if l.strip(): o = json.loads(l); truth[o['race_id']] = o['p']
+    hs = [x for x in (conf_hits(rec, truth[rec['race']['race_id']]) for _, rec in load_records(root, version)
+                      if rec['race']['race_id'] in truth) if x is not None]
+    def two(rows):
+        return {'main': calibration([r['main'] for r in rows], [r['main_hit'] for r in rows]),
+                'sub': calibration([r['sub'] for r in rows], [r['sub_hit'] for r in rows])}
+    out = {'version': version, 'defs': sorted({h['def'] for h in hs}), 'all': two(hs)}
+    unv = set(pr.load_manifest(root, version).get('unverified_venues') or [])
+    if unv:  # 作るときに成績を確かめていない会場は分けて出す
+        out['verified'] = two([h for h in hs if h['jcd'] not in unv])
+        out['unverified'] = two([h for h in hs if h['jcd'] in unv]); out['unverified_venues'] = sorted(unv)
+    if by_venue:
+        vs = collections.defaultdict(list)
+        for h in hs: vs[h['jcd']].append(h)
+        out['by_venue'] = {j: two(v) for j, v in sorted(vs.items())}
+    return out
+
+
 def load_results(path):
     res = {}
     with open(path, encoding='utf-8') as f:
@@ -465,14 +536,14 @@ def load_input(root, rec):
 
 def coverage(root, pairs, manifest, results, include_backtest):
     """記録漏れ(README 第4章: 自信のあるレースだけ記録することへの対策)。
-    対象の期間(eval_from の日から最後の記録の日まで)の大村の枠なり・除外なしのレースのうち、記録が無いもの"""
+    対象の期間(eval_from の日から最後の記録の日まで)の、版の対象会場(venues、書いていない版は大村だけ)の枠なり・除外なしのレースのうち、記録が無いもの"""
     el = eligible(pairs, manifest, include_backtest)
     if not el: return {'n_target': 0, 'n_missing': 0, 'rate': None}
     ef = manifest.get('eval_from')
     start = (pr.parse_time(ef) + pr.JST).strftime('%Y%m%d') if (ef and not include_backtest) else min(r['race']['hd'] for _, r, _ in el)
     end = max(r['race']['hd'] for _, r, _ in el)
     have = {r['race']['race_id'] for _, r, _ in el}
-    target = sorted(k for k, o in results.items() if str(o.get('jcd')) == '24' and start <= o['hd'] <= end and race_valid(o)[0])
+    target = sorted(k for k, o in results.items() if str(o.get('jcd')).zfill(2) in pr.venues_of(manifest) and start <= o['hd'] <= end and race_valid(o)[0])
     miss = [k for k in target if k not in have]
     return {'from': start, 'to': end, 'n_target': len(target), 'n_missing': len(miss), 'rate': len(miss) / len(target) if target else None,
             'missing': miss[:50]}
@@ -507,7 +578,7 @@ def run(root, version, base_version, results, judge, labels_path, include_backte
         oc['race']['scored'] = s in chosen and not include_backtest
     if write_outcomes:
         for _, rec, oc in pairs:
-            p = os.path.join(root, 'outcomes', '24', rec['race']['hd'], '%s__%s.outcome.json' % (rec['race']['race_id'], version))
+            p = os.path.join(root, 'outcomes', rec['race']['jcd'], rec['race']['hd'], '%s__%s.outcome.json' % (rec['race']['race_id'], version))
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, 'w', encoding='utf-8', newline='\n') as f: json.dump(oc, f, ensure_ascii=False, indent=1)
     why = collections.Counter(oc['race']['excluded_reason'] or ('数える' if s in chosen else '本番でない・eval_from より前')
@@ -531,9 +602,12 @@ def main():
     r.add_argument('--labels', default=os.path.join(HERE, 'labels', 'soft-v1.json'))
     r.add_argument('--include-backtest', action='store_true'); r.add_argument('--write-outcomes', action='store_true')
     r.add_argument('--out')
+    c = sp.add_parser('conf', help='13類の自信度の較正表(主・副、全体と会場別)')
+    c.add_argument('--root', default='.'); c.add_argument('--version', required=True); c.add_argument('--truth13', required=True)
+    c.add_argument('--out')
     a = ap.parse_args()
     try:
-        rep = run(a.root, a.version, a.base_version, a.results, a.judge, a.labels, a.include_backtest, a.write_outcomes)
+        rep = conf_report(a.root, a.version, a.truth13) if a.cmd == 'conf' else run(a.root, a.version, a.base_version, a.results, a.judge, a.labels, a.include_backtest, a.write_outcomes)
     except (EvalError, pr.RecordError, OSError, ValueError) as e:
         print('エラー:', e, file=sys.stderr); return 2
     s = json.dumps(rep, ensure_ascii=False, indent=1, default=str)

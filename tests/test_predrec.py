@@ -4,6 +4,8 @@ from unittest import mock
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, HERE)
 import predrec as P
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _fsutil import rmtree_force
 
 DEADLINE = '2099-01-01T10:52:00+09:00'
 GIT_ENV = dict(GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t', GIT_COMMITTER_EMAIL='t@t')
@@ -33,12 +35,12 @@ class Base(unittest.TestCase):
         self.man = P.load_manifest(self.root, 'trial-v0')
 
     def tearDown(self):
-        shutil.rmtree(self.root, ignore_errors=True)
+        rmtree_force(self.root, ignore_errors=True)
 
     def git(self, *a, env=None):
         e = dict(os.environ, **GIT_ENV)
         if env: e.update(env)
-        return subprocess.run(['git', '-C', self.root] + list(a), check=True, capture_output=True, env=e, text=True).stdout
+        return subprocess.run(['git', '-C', self.root] + list(a), check=True, capture_output=True, env=e, text=True, encoding='utf-8').stdout
 
     def make(self, race='24_20260910_01', mode='live', deadline=DEADLINE, model_output=None, s=None):
         return P.make_record(s or snap(), self.man, race, deadline, mode, code_root=self.root, model_output=model_output)
@@ -89,7 +91,7 @@ class TestMake(Base):
         self.assertEqual(r['model']['output_source'], 'file')
 
     def test_live_needs_git(self):
-        shutil.rmtree(os.path.join(self.root, '.git'))
+        rmtree_force(os.path.join(self.root, '.git'))
         with self.assertRaises(P.RecordError): self.make()
         self.make(mode='backtest')  # 試しなら git が無くても作れる
 
@@ -98,7 +100,7 @@ class TestMake(Base):
         with self.assertRaises(P.RecordError): self.make(mode='backtest', model_output=mo)
 
     def test_code_changed(self):
-        with open(os.path.join(self.root, 'models', 'trial_v0.py'), 'a') as f: f.write('\n# 変更\n')
+        with open(os.path.join(self.root, 'models', 'trial_v0.py'), 'a', encoding='utf-8') as f: f.write('\n# 変更\n')
         with self.assertRaises(P.RecordError): self.make()
 
     def test_crlf_same_hash(self):
