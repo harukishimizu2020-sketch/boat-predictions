@@ -1,0 +1,77 @@
+{
+ "version": "baseline24-v0",
+ "purpose": "24場の毎日の締切前記録の最初の版(基準モデル)。本モデルの版と比べる基準の記録を、判定し直しと本モデルの完成を待たずに始めるため(2026-11-01 ユーザー: すべておすすめで進める)",
+ "model": "会場ごとの単純な割合(毎レース会場ごとに同じ確率)。起点7分類・13類・2〜6号艇の動き・コースごとの ST",
+ "frozen_at": "2026-11-01T15:48:57+00:00",
+ "built_from": {
+  "data": "/mnt/project-files/analysis_20261020/data/races_core.jsonl.gz(sha256 b70906452c45df2792cc68f42448c86fbd8677b8fbdc817b3e58a6297cd96b8b、PC kyotei_mark1 の 2026-10-20 時点の写し、判定し直しの前)",
+  "period": "20231001〜20260831 の valid かつ判定済み 22,625 レース(寄せる強さの選択は 〜20260630 で作り 20260701〜20260831 で測定)、ST は 20251215〜20260831",
+  "labels": "races_core の cls(cls_default の表、13類は pmap13-v1)。動きは labels/soft-v2.json"
+ },
+ "eval_from": null,
+ "origin_classes": [
+  "2まくり",
+  "3まくり",
+  "4まくり",
+  "5まくり",
+  "6まくり",
+  "3まくり差し",
+  "その他"
+ ],
+ "bands": {
+  "lo": 0.0,
+  "hi": 1.01
+ },
+ "bands_method": "会場ごとに全レース同じ確率のため帯を分けない(全レース○)",
+ "success_definition": null,
+ "escape_definition": null,
+ "soft_label_table": "labels/soft-v2.json",
+ "entry": "models/baseline24_v0.py",
+ "code_files": [
+  "models/baseline24_v0.py",
+  "models/baseline24_v0_params.json"
+ ],
+ "venues": [
+  "01",
+  "02",
+  "03",
+  "04",
+  "05",
+  "06",
+  "07",
+  "08",
+  "09",
+  "10",
+  "11",
+  "12",
+  "13",
+  "14",
+  "15",
+  "16",
+  "17",
+  "18",
+  "19",
+  "20",
+  "21",
+  "22",
+  "23",
+  "24"
+ ],
+ "publish_inputs": false,
+ "sample_rule": {
+  "seed": "baseline24-v0-sample",
+  "rate": 0.17,
+  "always": [
+   "24"
+  ]
+ },
+ "confidence_def": "conf-v0",
+ "notes": [
+  "2026-09-01 以降のデータは作るときに読んでいない(F-4)",
+  "判定し直しの後のラベルで作り直す版は baseline24-v1。この版は変えない",
+  "会場ごとにしても全国一律より対数損失の改善は小さい(起点 0.0048・13類 0.0057、reports/baseline24_v0_build.md)",
+  "採点の標本: レースIDの sha256(種|レースID) が 0.17 未満、大村(24)は全部(全国 valid 約3,580/月 → 約600件+大村)",
+  "入力の写しは公開しない(会場サイトの規約、2026-10-31 ユーザー決定)。記録と入力のハッシュだけ公開"
+ ],
+ "code_files_hash": "sha256:b297e741549532109088d177338a918f1f69d9d8cd40aa9e8afd49042222f75a"
+}
