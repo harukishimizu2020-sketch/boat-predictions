@@ -120,19 +120,27 @@ def load_results_store(path, hd, years=2):
     return rows
 
 
+_BUILDERS = {}
+
+
 def load_builder(root, manifest):
     """版の設定 snapshot_builder(code_files に入れたファイル)の build(snap, ctx) を読む。無ければ None。
     記録の前に snapshot に履歴などを足す関数(足した後の snapshot をハッシュして残すので、replay も同じ入力で確かめられる)"""
     path = manifest.get('snapshot_builder')
     if not path: return None
     if path not in manifest['code_files']: raise pr.RecordError('snapshot_builder は版の code_files に入れる: ' + path)
-    if not getattr(sys, 'pycache_prefix', None): sys.pycache_prefix = __import__('tempfile').mkdtemp(prefix='predrec_nopyc_')
-    sys.dont_write_bytecode = True   # predrec.run_model と同じく、ソースから読む
-    d = os.path.dirname(os.path.abspath(os.path.join(root, path)))
-    if d not in sys.path: sys.path.insert(0, d)   # 同じフォルダの別ファイルを import する builder のため
-    spec = importlib.util.spec_from_file_location('snap_builder_' + manifest['version'].replace('-', '_').replace('.', '_'), os.path.join(root, path))
-    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-    return m.build
+    full = os.path.abspath(os.path.join(root, path))
+    # predrec.run_model と同じく、版のフォルダの別ファイルは版ごとに分けて使う(同じ名前のファイルを持つ版を並べても混ざらない。2026-11-02)
+    key = ('builder', manifest['version'], full, pr.code_files_hash(manifest['code_files'], root))
+    if key in _BUILDERS: return _BUILDERS[key]   # tick ごとに読み直さない(builder の中の索引などを使い回す。コードが変われば key が変わる)
+    with pr.model_scope(key, os.path.dirname(full)):
+        spec = importlib.util.spec_from_file_location('snap_builder_' + manifest['version'].replace('-', '_').replace('.', '_'), full)
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+    def build(snap, ctx):
+        with pr.model_scope(key, os.path.dirname(full)): return m.build(snap, ctx)
+    _BUILDERS[key] = build
+    return build
 
 
 def _versions(version):

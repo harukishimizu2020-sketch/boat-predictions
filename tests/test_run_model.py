@@ -31,6 +31,27 @@ class TestRunModel(Base):
         with self.assertRaises(P.RecordError):   # 古い版はコードが変わったので作れない
             P.make_record(snap(), m1, '24_20260910_04', DEADLINE, 'backtest', code_root=self.root)
 
+    def test_same_names_in_two_folders(self):
+        """同じ名前の別ファイル(sib_part・後から import する sib_late)を持つ版をフォルダを分けて並べ、交互に動かしても混ざらない(2026-11-02)"""
+        mans = {}
+        for name, val in (('dir-a', 'A'), ('dir-b', 'B')):
+            d = os.path.join(self.root, 'models', name); os.makedirs(d)
+            with open(os.path.join(d, 'sib_part.py'), 'w', encoding='utf-8') as f: f.write('VAL = %r\n' % val)
+            with open(os.path.join(d, 'sib_late.py'), 'w', encoding='utf-8') as f: f.write('VAL = %r\n' % (val.lower()))
+            with open(os.path.join(d, 'sib_main.py'), 'w', encoding='utf-8') as f:
+                f.write(open(os.path.join(self.root, 'models', 'trial_v0.py'), encoding='utf-8').read()
+                        + '\nimport sib_part\n_p = predict\ndef predict(s):\n    import sib_late\n    o = _p(s); o["rationale"] = [{"feature": sib_part.VAL + sib_late.VAL, "direction": "up", "target": "t"}]; return o\n')
+            m = load(os.path.join(self.root, 'versions', 'trial-v0.json'))
+            files = ['models/%s/%s' % (name, x) for x in ('sib_main.py', 'sib_part.py', 'sib_late.py')]
+            m.update(version=name, entry=files[0], code_files=files)
+            m['code_files_hash'] = P.code_files_hash(files, self.root)
+            dump(m, os.path.join(self.root, 'versions', name + '.json'))
+            mans[name] = m
+        self.git('add', '-A'); self.git('commit', '-qm', 'dirs')
+        got = [P.run_model(mans[n], snap(), self.root)['rationale'][0]['feature'] for n in ('dir-a', 'dir-b', 'dir-a', 'dir-b')]
+        self.assertEqual(got, ['Aa', 'Bb', 'Aa', 'Bb'])
+        self.assertNotIn('sib_part', sys.modules); self.assertNotIn('sib_late', sys.modules)   # 外には残さない
+
 
 if __name__ == '__main__':
     unittest.main()
