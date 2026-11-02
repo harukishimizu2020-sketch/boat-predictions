@@ -10,7 +10,8 @@
 状態フォルダ(plan_*.json・misses_*.jsonl・runlog.jsonl・sample_*.json)は公開リポジトリの外に置く。
 
 取得モジュール(会場の公式サイトの読み方。kyotei_mark1/venues24_20261031/fetch/ を包む)は次の2つを持つ:
-  racelist(hd) -> [{'race_id': 'JJ_YYYYMMDD_RR', 'deadline': 'YYYY-MM-DDTHH:MM:00+09:00', 'deadline_source': url, 'card': {...} または省く}]
+  racelist(hd) -> [{'race_id': 'JJ_YYYYMMDD_RR', 'deadline': 'YYYY-MM-DDTHH:MM:00+09:00', 'deadline_source': url, 'card': {...} または省く,
+                     'race_class': 'is-ippan' など(boatrace.jp の節の格、任意), 'race_title', 'meet_day'(任意)}]
   before(race_id) -> {'captured_at': UTC の ISO 時刻, 'sources': [url...], 'raw': {...}, 'normalized': {...}}
  任意で card(race_id) -> {...}(出走表)。racelist が card を省いたレースは、tick で記録を作る直前に card() で取る
  (2026-11-01 PC の試運転: 朝に全レースの出走表を取ると boatrace.jp が1回約10秒で plan に約32分かかり、終わる前に16レースの締切が過ぎた。
@@ -93,15 +94,53 @@ def preflight(root):
             raise pr.RecordError('git の %s が未設定です。リポジトリの中で git config %s "..." を設定してから動かす' % (k, k))
 
 
+RACE_META = ('race_class', 'race_title', 'meet_day')   # racelist(hd) の各レースに任意で付ける属性 → snapshot の同じ名前の欄
+
+
+_RESULTS = {}
+
+
+def load_results_store(path, hd, years=2):
+    """snapshot_builder に渡す過去の公式結果(races_core と同じ形の行)。その日より前・直近 years 年だけ。ファイルの更新時刻で再読込"""
+    if not path: return None
+    import gzip
+    st = os.stat(path).st_mtime
+    key = (path, hd, years)
+    if key in _RESULTS and _RESULTS[key][0] == st: return _RESULTS[key][1]
+    lo = '%04d%s' % (int(hd[:4]) - years, hd[4:])
+    op = gzip.open if path.endswith('.gz') else open
+    rows = []
+    with op(path, 'rt', encoding='utf-8') as f:
+        for l in f:
+            if not l.strip(): continue
+            o = json.loads(l)
+            if lo <= str(o.get('hd', '')) < hd: rows.append(o)   # 当日以降は渡さない(未来の結果を入力に混ぜない)
+    rows.sort(key=lambda o: (o['hd'], o.get('jcd', ''), int(o.get('rno') or 0)))
+    _RESULTS.clear(); _RESULTS[key] = (st, rows)
+    return rows
+
+
+_BUILDERS = {}
+
+
 def load_builder(root, manifest):
     """版の設定 snapshot_builder(code_files に入れたファイル)の build(snap, ctx) を読む。無ければ None。
     記録の前に snapshot に履歴などを足す関数(足した後の snapshot をハッシュして残すので、replay も同じ入力で確かめられる)"""
     path = manifest.get('snapshot_builder')
     if not path: return None
     if path not in manifest['code_files']: raise pr.RecordError('snapshot_builder は版の code_files に入れる: ' + path)
-    spec = importlib.util.spec_from_file_location('snap_builder_' + manifest['version'].replace('-', '_').replace('.', '_'), os.path.join(root, path))
-    m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-    return m.build
+    full = os.path.abspath(os.path.join(root, path))
+    # predrec.run_model と同じく、版のフォルダの別ファイルは版ごとに分けて使う(同じ名前のファイルを持つ版を並べても混ざらない。2026-11-02)
+    key = ('builder', manifest['version'], full, pr.code_files_hash(manifest['code_files'], root))
+    if key in _BUILDERS: return _BUILDERS[key]   # tick ごとに読み直さない(builder の中の索引などを使い回す。コードが変われば key が変わる)
+    with pr.model_scope(key, os.path.dirname(full)):
+        spec = importlib.util.spec_from_file_location('snap_builder_' + manifest['version'].replace('-', '_').replace('.', '_'), full)
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+    def build(snap, ctx):
+        with pr.model_scope(key, os.path.dirname(full)): return m.build(snap, ctx)
+    _BUILDERS[key] = build
+    return build
 
 
 def _versions(version):
@@ -114,10 +153,12 @@ def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=90, push
     時刻はレースごとに今の時刻で確かめ、記録は1レースごとにすぐ commit(と push)する
     (2026-11-01 PC の試運転: 最後にまとめて commit したら、締切39秒前に作った記録の commit が締切の14秒後になった)。
     取得が締切の commit_buffer_s 秒前までかかったら、記録を作らずに漏れにする。t は試験用の固定時刻、clock は試験用の時計。
-    ctx は snapshot_builder に渡す辞書(公式結果の蓄積の場所など)"""
+    ctx は snapshot_builder に渡す辞書。ctx に results_store(ファイルの場所)があれば、その日より前の結果の行を ctx['results'] に入れて渡す"""
     clock = clock or ((lambda: t) if t else now)
     hd = hd or jst_today(); t0 = clock()
     preflight(root)
+    if ctx and ctx.get('results_store') and not os.path.exists(ctx['results_store']):
+        raise pr.RecordError('結果の蓄積が無い: %s' % ctx['results_store'])
     vs = _versions(version)
     mans = {v: pr.load_manifest(root, v) for v in vs}
     builders = {v: load_builder(root, mans[v]) for v in vs}
@@ -150,11 +191,16 @@ def tick(root, state, fetcher, version, hd=None, lead_min=8.0, margin_s=90, push
             continue
         base = {'key': rid, 'captured_at': b['captured_at'], 'card': card, 'before': b.get('normalized'),
                 'raw': b.get('raw'), 'sources': b.get('sources')}
+        for k in RACE_META:   # racelist で取れたレースの属性(節の格など)。取れていない欄は入れない
+            if r.get(k) is not None: base[k] = r[k]
         any_made = False
         for v in todo:
             try:
                 snap = json.loads(json.dumps(base))
-                if builders[v]: snap = builders[v](snap, dict(ctx or {}, hd=hd, race_id=rid, state=state))
+                if builders[v]:
+                    c2 = dict(ctx or {}, hd=hd, race_id=rid, state=state)
+                    if c2.get('results_store'): c2['results'] = load_results_store(c2['results_store'], hd)
+                    snap = builders[v](snap, c2)
                 cur = clock()
                 if cur >= d - dt.timedelta(seconds=commit_buffer_s):
                     miss(rid, v, '取得が締切の直前までかかった(%d秒前を切った)' % commit_buffer_s, cur); continue

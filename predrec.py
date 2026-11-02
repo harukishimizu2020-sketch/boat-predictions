@@ -15,7 +15,7 @@
   - モデルの predict(snapshot) は、同じ入力なら必ず同じ出力を返すこと(verify が再実行して確かめる)。
   - ハッシュの正規形は Python の json.dumps(sort_keys・区切り空白なし・ensure_ascii=False・UTF-8)。他の言語で確かめるときは同じ書き方にそろえる。
 """
-import argparse, datetime as dt, hashlib, json, os, re, subprocess, sys, tempfile
+import argparse, datetime as dt, hashlib, importlib, importlib.util, json, os, re, subprocess, sys, tempfile
 
 FORMAT = 'predrec-1'
 ORIGIN_CLASSES = ['2まくり', '3まくり', '4まくり', '5まくり', '6まくり', '3まくり差し', 'その他']  # GATE 第2章の起点7分類(この順で固定)
@@ -287,12 +287,56 @@ def paths_for(race_id, version):
             'inputs/%s/%s/%s__%s.input.json' % (jcd, hd, race_id, version))
 
 
+_MODELS = {}
+_SCOPE_MODS = {}
+
+
+class model_scope:
+    """版のフォルダの別ファイル(tm13_features など)を、その版の読み込み・実行の間だけ使う。
+    2026-11-02: 同じ名前のファイルを持つ版をフォルダを分けて並べたとき(models/ の p1101 と models/tm13_a_r1102/)、
+    sys.modules の名前の使い回しで別の版のファイルが動くのを防ぐ。関数の中で後から import するファイル(tm13_program)も同じ。
+    key ごとに、そのフォルダから読んだモジュールを覚えておき、入るたびに sys.modules と sys.path の先頭を差し替え、出るときに元に戻す"""
+    def __init__(self, key, d):
+        self.key, self.d = key, os.path.abspath(d)
+
+    def __enter__(self):
+        if not getattr(sys, 'pycache_prefix', None): sys.pycache_prefix = tempfile.mkdtemp(prefix='predrec_nopyc_')
+        sys.dont_write_bytecode = True   # モデルは必ずソースから読む(.pyc は同じ秒・同じ大きさの書き換えを見逃す)
+        own = _SCOPE_MODS.setdefault(self.key, {})
+        self.names = {f[:-3] for f in os.listdir(self.d) if f.endswith('.py')}
+        self.saved = {n: sys.modules.get(n) for n in self.names}
+        for n in self.names:
+            if n in own: sys.modules[n] = own[n]
+            else: sys.modules.pop(n, None)
+        self.saved_path = list(sys.path)
+        sys.path[:] = [self.d] + [x for x in sys.path if os.path.abspath(x or '.') != self.d]
+        importlib.invalidate_caches()
+        return self
+
+    def __exit__(self, *exc):
+        own = _SCOPE_MODS[self.key]
+        for n in self.names:
+            m = sys.modules.get(n); f = getattr(m, '__file__', None)
+            if f and os.path.dirname(os.path.abspath(f)) == self.d: own[n] = m
+            if self.saved[n] is None: sys.modules.pop(n, None)
+            else: sys.modules[n] = self.saved[n]
+        sys.path[:] = self.saved_path
+        return False
+
+
 def run_model(manifest, snapshot, root):
-    """版の設定の entry(predict(snapshot) を持つファイル)を読み込んで実行する"""
-    import importlib.util
-    spec = importlib.util.spec_from_file_location('predrec_model_' + re.sub(r'\W', '_', manifest['version']), os.path.join(root, manifest['entry']))
-    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-    return mod.predict(roundtrip(snapshot))
+    """版の設定の entry(predict(snapshot) を持つファイル)を読み込んで実行する。
+    entry のフォルダの別ファイルを import するモデルのため、読み込みと実行は model_scope の中で行う(2026-11-01 tolmena13-a、11-02 版を並べる対応)。
+    読み込んだモジュールは「版・entry の場所・code_files のハッシュ」ごとに使い回す(大きい係数を毎回読まないため。コードが変われば読み直す)"""
+    path = os.path.abspath(os.path.join(root, manifest['entry']))
+    key = (manifest['version'], path, code_files_hash(manifest['code_files'], root))
+    with model_scope(key, os.path.dirname(path)):
+        mod = _MODELS.get(key)
+        if mod is None:
+            spec = importlib.util.spec_from_file_location('predrec_model_' + re.sub(r'\W', '_', manifest['version']), path)
+            mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+            _MODELS[key] = mod
+        return mod.predict(roundtrip(snapshot))
 
 
 def _r(x):

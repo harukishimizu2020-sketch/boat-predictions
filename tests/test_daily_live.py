@@ -101,6 +101,37 @@ class TestDaily(Base):
         r2 = D.tick(self.root, self.state, f, 't24,t24b', self.hd, t=self.now)
         self.assertEqual(r2['made'], [])
 
+    def test_race_meta_and_results_store(self):
+        # racelist の節の格は snapshot に入り、builder には当日より前の結果だけが渡る
+        import gzip
+        store = os.path.join(self.state + '_res.jsonl.gz')
+        prev = (dt.datetime.strptime(self.hd, '%Y%m%d') - dt.timedelta(days=1)).strftime('%Y%m%d')
+        old = '%04d%s' % (int(self.hd[:4]) - 3, self.hd[4:])
+        with gzip.open(store, 'wt', encoding='utf-8') as fh:
+            for hd_, rno in ((prev, 1), (self.hd, 1), (old, 1)):
+                fh.write(json.dumps({'key': '01_%s_%02d' % (hd_, rno), 'jcd': '01', 'hd': hd_, 'rno': rno}) + '\n')
+        with open(os.path.join(self.root, 'models', 'res_snap.py'), 'w', encoding='utf-8') as fh:
+            fh.write("def build(snap, ctx):\n    snap['history'] = [r['hd'] for r in ctx['results']]\n    return snap\n")
+        m = load(os.path.join(self.root, 'versions', 't24.json'))
+        m.update(version='t24r', snapshot_builder='models/res_snap.py', code_files=m['code_files'] + ['models/res_snap.py'])
+        m['code_files_hash'] = P.code_files_hash(m['code_files'], self.root)
+        dump(m, os.path.join(self.root, 'versions', 't24r.json'))
+        self.git('add', '-A'); self.git('commit', '-qm', 't24r')
+        rid = '01_%s_01' % self.hd
+        class Meta(FakeFetcher):
+            def racelist(s2, hd):
+                return [dict(x, race_class='is-G1b') for x in FakeFetcher.racelist(s2, hd)]
+        f = Meta(self.hd, {rid: self.dl(5)})
+        try:
+            r = D.tick(self.root, self.state, f, 't24r', self.hd, t=self.now, ctx={'results_store': store})
+        finally:
+            os.remove(store)
+        self.assertEqual(r['made'], [rid])
+        inp = load(os.path.join(self.root, P.paths_for(rid, 't24r')[1]))
+        self.assertEqual(inp['race_class'], 'is-G1b')
+        self.assertEqual(inp['history'], [prev])   # 当日と2年より前は入らない
+        self.assertEqual(P.verify(self.root, replay=True), [])
+
     def test_card_fetched_at_tick(self):
         class LazyCard(FakeFetcher):  # 朝は締切時刻だけ、出走表は記録の直前に取る
             def racelist(self, hd):

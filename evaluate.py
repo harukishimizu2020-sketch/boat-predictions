@@ -493,6 +493,10 @@ def conf_report(root, version, truth13_path, by_venue=True):
         return {'main': calibration([r['main'] for r in rows], [r['main_hit'] for r in rows]),
                 'sub': calibration([r['sub'] for r in rows], [r['sub_hit'] for r in rows])}
     out = {'version': version, 'defs': sorted({h['def'] for h in hs}), 'all': two(hs)}
+    unv = set(pr.load_manifest(root, version).get('unverified_venues') or [])
+    if unv:  # 作るときに成績を確かめていない会場は分けて出す
+        out['verified'] = two([h for h in hs if h['jcd'] not in unv])
+        out['unverified'] = two([h for h in hs if h['jcd'] in unv]); out['unverified_venues'] = sorted(unv)
     if by_venue:
         vs = collections.defaultdict(list)
         for h in hs: vs[h['jcd']].append(h)
