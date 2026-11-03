@@ -1,0 +1,207 @@
+{
+ "format": "predrec-1",
+ "mode": "live",
+ "race": {
+  "race_id": "22_20261103_07",
+  "jcd": "22",
+  "hd": "20261103",
+  "rno": 7,
+  "deadline": "2026-11-03T13:46:00+09:00",
+  "deadline_source": "https://www.boatrace.jp/owpc/pc/race/racelist?rno=1&jcd=22&hd=20261103"
+ },
+ "created_at": "2026-11-03T04:38:44+00:00",
+ "model": {
+  "version": "tolmena13-a-r1102",
+  "manifest_hash": "sha256:616bc69887c416a30af3d0f9a493a1aab239184184141ac04c8d5b9ae43c4717",
+  "code_files_hash": "sha256:d695bcaeaaf164a6a8dcbeab8e710fdeef5540529a2b77adb4718488458e15ac",
+  "code_commit": "65a7b1c912706321fff53d7b30a7b298f98b1239",
+  "output_source": "entry",
+  "tool_hash": "sha256:8e6e1f6e1964e469e4fef1819ee96a0f8a20152be67ed546fc7f7f2c0071ca68"
+ },
+ "input": {
+  "hash": "sha256:57a9ea3166cfddf1a7b5f81cbf2e3c7093f497420cdfb02fdbaa0cf239bf6c5f",
+  "path": "inputs/22/20261103/22_20261103_07__tolmena13-a-r1102.input.json",
+  "captured_at": "2026-11-03T04:38:28+00:00"
+ },
+ "premise": {
+  "entry": {
+   "courses": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "p_as_predicted": null
+  },
+  "st": [
+   {
+    "boat": 1,
+    "mean": 0.1765,
+    "sd": 0.0737
+   },
+   {
+    "boat": 2,
+    "mean": 0.1486,
+    "sd": 0.0715
+   },
+   {
+    "boat": 3,
+    "mean": 0.1339,
+    "sd": 0.0512
+   },
+   {
+    "boat": 4,
+    "mean": 0.2562,
+    "sd": 0.0723
+   },
+   {
+    "boat": 5,
+    "mean": 0.19,
+    "sd": 0.0653
+   },
+   {
+    "boat": 6,
+    "mean": 0.1626,
+    "sd": 0.0447
+   }
+  ],
+  "form": null
+ },
+ "origin": {
+  "classes": [
+   "2まくり",
+   "3まくり",
+   "4まくり",
+   "5まくり",
+   "6まくり",
+   "3まくり差し",
+   "その他"
+  ],
+  "p": [
+   0.075449,
+   0.427695,
+   0.069352,
+   0.089811,
+   0.029857,
+   0.24265,
+   0.065187
+  ]
+ },
+ "main_scenario": {
+  "origin": "3まくり",
+  "p": 0.427695,
+  "scenario_id": null
+ },
+ "confidence": {
+  "mark": "○",
+  "bands": {
+   "lo": 0.0,
+   "hi": 1.01
+  }
+ },
+ "boats": [
+  {
+   "boat": 2,
+   "move_p": {
+    "差し": 0.924538,
+    "まくり": 0.075462,
+    "まくり差し": 0.0
+   },
+   "success_p": null
+  },
+  {
+   "boat": 3,
+   "move_p": {
+    "差し": 0.158431,
+    "まくり": 0.442196,
+    "まくり差し": 0.399373
+   },
+   "success_p": null
+  },
+  {
+   "boat": 4,
+   "move_p": {
+    "差し": 0.600503,
+    "まくり": 0.112836,
+    "まくり差し": 0.28666
+   },
+   "success_p": null
+  },
+  {
+   "boat": 5,
+   "move_p": {
+    "差し": 0.196831,
+    "まくり": 0.183984,
+    "まくり差し": 0.619185
+   },
+   "success_p": null
+  },
+  {
+   "boat": 6,
+   "move_p": {
+    "差し": 0.637932,
+    "まくり": 0.080791,
+    "まくり差し": 0.281277
+   },
+   "success_p": null
+  }
+ ],
+ "boat1": null,
+ "rationale": [
+  {
+   "boat": 1,
+   "feature": "1号艇が逃げる確率",
+   "value": 0.7006,
+   "target": "1逃げ",
+   "direction": "up",
+   "effect": null
+  }
+ ],
+ "integrity": {
+  "record_hash": "sha256:61b82634887047746b74fa315e8f9e89acfeba39f96bf93ac61072681f9395db"
+ },
+ "class13": {
+  "classes": [
+   "2差しが制す",
+   "2攻め・1残す",
+   "2攻め成立",
+   "3が制す",
+   "3攻め・1残す",
+   "3攻め成立",
+   "4差しが制す",
+   "4攻め・1残す",
+   "4攻め成立",
+   "5が制す",
+   "5攻め・1残す",
+   "6攻め・1残す",
+   "その他"
+  ],
+  "p": [
+   0.043128,
+   0.029276,
+   0.020701,
+   0.029501,
+   0.48782,
+   0.110998,
+   0.004775,
+   0.06555,
+   0.008299,
+   0.003612,
+   0.090756,
+   0.021927,
+   0.083657
+  ],
+  "conf": {
+   "main": 0.689574,
+   "sub": 0.48782,
+   "top3": [
+    "3攻め・1残す",
+    "3攻め成立",
+    "5攻め・1残す"
+   ],
+   "def": "conf-v0"
+  }
+ }
+}
